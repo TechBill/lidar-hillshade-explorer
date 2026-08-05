@@ -1,4 +1,4 @@
-# Building LiDAR Hillshade Explorer
+# Building LiDAR Hillshade Explorer 3.0
 
 This document provides instructions for building platform-specific binaries of LiDAR Hillshade Explorer.
 
@@ -143,10 +143,7 @@ The easiest way to obtain Windows binaries:
 source venv/bin/activate
 
 # Build with PyInstaller
-pyinstaller lidar_explorer.spec
-
-# Fix PDAL libproj mismatch inside the .app bundle
-python3 tools/fix_pdal_libs.py
+pyinstaller --noconfirm lidar_explorer.spec
 
 # The .app bundle will be in dist/
 # dist/LiDAR Hillshade Explorer.app
@@ -189,6 +186,17 @@ dist\LiDARHillshadeExplorer\LiDARHillshadeExplorer.exe
 
 ### macOS
 
+The current release artifact is the Apple Silicon ARM64 `.app`. Release only
+the `.app`; `dist/LiDARHillshadeExplorer/` is staging output and is not required.
+
+Create a ZIP that preserves the bundle's links and permissions:
+
+```bash
+ditto -c -k --sequesterRsrc --keepParent \
+  "dist/LiDAR Hillshade Explorer.app" \
+  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.zip"
+```
+
 The built `.app` can be distributed as:
 1. **DMG image** (recommended)
 2. **ZIP archive**
@@ -206,7 +214,7 @@ create-dmg \
   --window-size 600 400 \
   --icon-size 100 \
   --app-drop-link 425 120 \
-  "LiDAR-Hillshade-Explorer.dmg" \
+  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.dmg" \
   "dist/LiDAR Hillshade Explorer.app"
 ```
 

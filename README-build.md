@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer
+# LiDAR Hillshade Explorer 3.0
 
 A simplified desktop LiDAR hillshade application for non-technical users.
 
@@ -11,13 +11,18 @@ User enters coordinates, clicks one button, and the app automatically finds LiDA
 - **Simple Input**: Enter latitude/longitude and area size (0.25, 0.5, or 1.0 sq mi)
 - **Paste Coordinates**: One-click paste from clipboard (supports Google Maps, Google Earth KML, comma/space-separated)
 - **Automatic Discovery**: Finds and downloads LiDAR from AWS/USGS datasets
-- **Smart Selection**: Automatically tries older datasets if newest has insufficient coverage
+- **Smart Selection**: Uses cached official USGS acquisition dates and quality
+  levels to rank datasets, then tries older collections if coverage is insufficient
+- **Terrain Styles**: Continuous Terrain, Preserve Large Gaps, and Custom TIN settings
 - **Auto-Resolution DEM**: Analyzes point spacing and selects optimal DEM resolution
 - **Interactive Viewer**: Pillow-based viewer with smooth zoom/pan controls
   - Zoom +/- buttons
   - Mouse wheel zoom
   - Left mouse drag to pan
   - Fit to window button
+  - Official work-unit metadata, collection dates, QL, source DEM resolution,
+    publication date, horizontal/vertical CRS, and geoid
+  - Viewport-only rendering for responsive navigation on large rasters
 - **Multiple Styles**:
   - Classic hillshade
   - 5 archaeology presets
@@ -28,9 +33,12 @@ User enters coordinates, clicks one button, and the app automatically finds LiDA
 
 ### Prerequisites
 
-System-level tools (install via QGIS/Homebrew/etc.):
+Development mode requires system-level tools (install via QGIS/Homebrew/etc.):
 - PDAL (LiDAR processing + DEM generation)
 - GDAL (hillshade generation and KMZ export)
+
+The standalone 3.0 release bundles these tools and does not require users to
+install Python, PDAL, GDAL, PROJ, Homebrew, or QGIS.
 
 ### Python Dependencies
 
@@ -64,8 +72,8 @@ python app.py
 
 ### Example Test Location
 
-- Latitude: 37.1032
-- Longitude: -90.4558
+- Latitude: 37.10483036184007
+- Longitude: -90.45131384376958
 - Size: Small (0.25 sq mi)
 - Smart Selection: Enabled
 

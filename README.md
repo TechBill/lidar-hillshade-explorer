@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer
+# LiDAR Hillshade Explorer 3.0
 
 LiDAR Hillshade Explorer is a lightweight desktop app for exploring terrain using LiDAR elevation data.  
 Enter coordinates, click one button, and the app downloads available LiDAR, processes it, generates a hillshade image, and opens an interactive viewer.
@@ -7,15 +7,37 @@ This tool is designed for research and visualization. It is **not survey-grade G
 
 ---
 
+## What's New in 3.0
+
+- Terrain Style presets use TIN interpolation and configurable gap filling to
+  reduce black building footprints and small holes.
+- Dataset ranking uses official USGS WESM collection dates, quality levels, and
+  source resolution instead of relying on years guessed from filenames.
+- USGS metadata is cached for seven days, with stale-cache and estimated-year
+  fallbacks when the metadata service is unavailable.
+- The viewer displays the exact work unit, acquisition dates, quality level,
+  source DEM resolution, publication date, CRS, geoid, point spacing, and
+  generated DEM resolution.
+- Zooming and panning use viewport-only rendering for much faster navigation of
+  large hillshades.
+- The viewer has larger system fonts, a wider scrollable sidebar, and sizing
+  that adapts to shorter Mac displays.
+
+---
+
 ## Features
 
 - One-click hillshade generation
 - Paste coordinates from Google Earth, Google Maps, or plain text
 - Interactive viewer with pan, zoom, and multiple hillshade styles
+- View official LiDAR work-unit metadata: acquisition dates, quality level,
+  source DEM resolution, publication date, horizontal/vertical CRS, and geoid
+- Viewport-based rendering for smooth zooming and panning on large hillshades
 - 5 archaeology presets for feature detection (low sun, multidirectional)
 - Custom hillshade parameters (z-factor, altitude, azimuth, multidirectional)
 - Export to GeoTIFF or KMZ (Google Earth)
 - Smart dataset selection using authoritative USGS acquisition dates and quality levels
+- Official USGS WESM metadata cached locally and refreshed every seven days
 - Main-screen terrain styles for continuous output or preserving large gaps
 - Custom TIN/DEM settings (buffer, edge factor, fill distance, smoothing)
 - Processing log window for troubleshooting
@@ -27,7 +49,11 @@ This tool is designed for research and visualization. It is **not survey-grade G
 
 Because this app is distributed as a downloadable app (not from the official Apple App Store or Microsoft Store), your computer may show a security warning the first time you run it. This is normal for many independent and open-source apps.
 
-### macOS (Apple Silicon + Intel)
+### macOS (Apple Silicon)
+
+The current 3.0 macOS release is built for Apple Silicon and runs natively on
+M1, M2, M3, M4, and newer ARM64 Macs. It does not require Rosetta. An Intel Mac
+requires a separately built x86_64 release.
 
 If macOS blocks the app with a message like:
 
@@ -43,6 +69,17 @@ Do this:
 6. Confirm again if prompted
 
 After you approve it once, the app should open normally in the future.
+
+### Install the macOS 3.0 Release
+
+1. Extract `LiDAR-Hillshade-Explorer-3.0-macOS-arm64.zip`.
+2. Drag **LiDAR Hillshade Explorer.app** into **Applications**.
+3. Open the app. If macOS blocks the first launch, follow the steps above.
+
+The `.app` is the complete standalone application. Users do not need the
+neighboring PyInstaller staging folder and do not need to install Python,
+Homebrew, PDAL, GDAL, PROJ, or QGIS. Internet access is required to discover and
+download USGS LiDAR data.
 
 ### Windows
 
@@ -95,10 +132,15 @@ Tip: Longitude is negative for most locations in the USA.
 
 ## Viewer Controls
 
+The viewer's **LiDAR Dataset** panel displays the exact USGS work-unit name,
+collection start/end dates, quality level, source DEM resolution, publication
+date, horizontal and vertical CRS, and geoid. **LiDAR Points & Output** retains
+the measured point spacing and generated DEM resolution.
+
 | Control | Action |
 |---------|--------|
 | Left-click drag | Pan |
-| Mouse wheel | Zoom in/out (capped at 1000%) |
+| Mouse wheel | Smooth zoom at the cursor (capped at 1000%) |
 | Zoom +/- buttons | Zoom centered on canvas |
 | Fit to Window | Reset zoom to show full image |
 
@@ -109,6 +151,10 @@ Tip: Longitude is negative for most locations in the USA.
 - **Custom** — Set your own z-factor, altitude, azimuth, and multidirectional options
 
 Click **Apply Style** to regenerate (reuses existing DEM, no re-download).
+
+The viewer renders only the visible portion of the hillshade while navigating,
+then performs a sharper redraw after motion stops. Export resolution is not
+reduced.
 
 ### Export
 
@@ -214,17 +260,9 @@ The spec file automatically:
 - Detects your platform (macOS ARM64/x86_64, Windows x86_64)
 - Bundles all binaries, libraries, and data files
 - **Windows**: Builds a single standalone `.exe` (onefile mode, ~345 MB)
-- **macOS**: Builds a `.app` bundle (onedir mode, ~265 MB)
+- **macOS**: Builds a standalone `.app` bundle (current ARM64 build: ~488 MB)
 
-#### Step 4: Post-Build Fix (macOS only)
-
-```bash
-python3 tools/fix_pdal_libs.py
-```
-
-This resolves library conflicts between PDAL and rasterio. **Required for PDAL processing to work on macOS.**
-
-#### Step 5: Test the Build
+#### Step 4: Test the Build
 
 **macOS:**
 ```bash
@@ -240,7 +278,7 @@ dist\LiDARHillshadeExplorer.exe
 
 | Platform | Output | Size |
 |----------|--------|------|
-| **macOS** | `dist/LiDAR Hillshade Explorer.app` | ~265 MB |
+| **macOS ARM64** | `dist/LiDAR Hillshade Explorer.app` | ~488 MB |
 | **Windows** | `dist/LiDARHillshadeExplorer.exe` | ~345 MB (single file) |
 
 ### Bundled Components
@@ -265,6 +303,21 @@ At runtime, the app looks for binaries in this order:
 
 #### macOS
 
+Release only `dist/LiDAR Hillshade Explorer.app`. The neighboring
+`dist/LiDARHillshadeExplorer/` directory is a PyInstaller staging product and is
+not needed by users. Preserve the app bundle's permissions and internal links by
+distributing it inside a ZIP or DMG.
+
+Create a ZIP:
+
+```bash
+ditto -c -k --sequesterRsrc --keepParent \
+  "dist/LiDAR Hillshade Explorer.app" \
+  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.zip"
+```
+
+Or create a DMG:
+
 ```bash
 brew install create-dmg
 
@@ -274,7 +327,7 @@ create-dmg \
   --window-size 600 400 \
   --icon-size 100 \
   --app-drop-link 450 185 \
-  "LiDAR-Hillshade-Explorer.dmg" \
+  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.dmg" \
   "dist/LiDAR Hillshade Explorer.app"
 ```
 
@@ -294,7 +347,7 @@ The single `.exe` file can be distributed directly — just zip it or share the 
 
 ### Library loading errors
 
-- **macOS**: Run `python3 tools/fix_pdal_libs.py` after PyInstaller build
+- **macOS**: Re-run `bundle_dependencies.py`, then rebuild the app
 - **Windows**: Re-run `bundle_dependencies_windows.py` with `--all-dlls` flag
 
 ### PROJ/GDAL data errors

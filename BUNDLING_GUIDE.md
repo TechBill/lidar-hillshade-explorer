@@ -1,4 +1,4 @@
-# Bundling Guide for LiDAR Hillshade Explorer
+# Bundling Guide for LiDAR Hillshade Explorer 3.0
 
 ## Summary
 
@@ -82,12 +82,9 @@ python3 bundle_dependencies.py
 #### Build the .app
 ```bash
 pyinstaller lidar_explorer.spec
-
-# Fix PDAL libproj mismatch inside the .app bundle
-python3 tools/fix_pdal_libs.py
 ```
 
-Output: `dist/LiDAR Hillshade Explorer.app/`
+Output: `dist/LiDAR Hillshade Explorer.app`
 
 ### Windows
 
@@ -153,9 +150,19 @@ The app should run completely standalone without requiring:
 ## Distribution
 
 ### macOS
+Release only `dist/LiDAR Hillshade Explorer.app`. The neighboring
+`dist/LiDARHillshadeExplorer/` directory is PyInstaller staging output and is
+not needed by users.
+
 The `.app` bundle can be distributed as:
 1. **DMG image** (recommended)
 2. **ZIP archive**
+
+```bash
+ditto -c -k --sequesterRsrc --keepParent \
+  "dist/LiDAR Hillshade Explorer.app" \
+  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.zip"
+```
 
 ### Windows
 The `LiDARHillshadeExplorer/` folder can be distributed as:
@@ -165,9 +172,7 @@ The `LiDARHillshadeExplorer/` folder can be distributed as:
 ## App Size
 
 ### macOS
-- **Python + Dependencies**: ~50-100 MB
-- **Binaries + Libraries**: ~165 MB
-- **Total**: ~215-265 MB
+- **Current Apple Silicon standalone bundle**: ~488 MB
 
 ### Windows
 - **Python + Dependencies**: ~750 MB (includes numpy MKL, etc.)
@@ -201,7 +206,7 @@ This ensures the bundled versions are always used when available.
 
 ### Library loading errors (macOS)
 1. Run `bundle_dependencies.py` again to fix library paths
-2. Run `python3 tools/fix_pdal_libs.py` after PyInstaller build
+2. Rebuild with `pyinstaller --noconfirm lidar_explorer.spec`
 3. Verify paths with: `otool -L bundle_bins/macos-arm64/pdal`
 
 ### PROJ/GDAL data errors
@@ -218,5 +223,5 @@ On Windows, if you see coordinate transformation errors:
 | `bundle_dependencies_windows.py` | Windows: Collect binaries from conda |
 | `lidar_explorer.spec` | PyInstaller spec (cross-platform) |
 | `src/utils/binary_paths.py` | Runtime binary/library path helper |
-| `tools/fix_pdal_libs.py` | macOS: Post-build symlink fix |
+| `tools/fix_pdal_libs.py` | Legacy macOS diagnostic/repair helper |
 | `BUNDLING_GUIDE.md` | This file |

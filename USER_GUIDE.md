@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer – User Guide (v1.0)
+# LiDAR Hillshade Explorer – User Guide (v3.0)
 
 ## Overview
 **LiDAR Hillshade Explorer** is a lightweight desktop app for exploring terrain using LiDAR data.  
@@ -14,7 +14,12 @@ It is **not survey-grade GIS**.
 
 Because LiDAR Hillshade Explorer is distributed as a downloadable app (not from the official Apple App Store or Microsoft Store), your computer may show a security warning the first time you run it. This is normal for many independent and open-source apps.
 
-### macOS (Apple Silicon + Intel)
+### macOS (Apple Silicon)
+
+Version 3.0 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
+Pro, iMac, Mac mini, Mac Studio, and Mac Pro systems. It runs natively on M1,
+M2, M3, M4, and newer Apple Silicon chips. Intel Macs require a separately
+built x86_64 version.
 
 When opening LiDAR Hillshade Explorer for the first time, macOS may block it and show a message like:
 
@@ -341,20 +346,12 @@ Enable **Smart Selection** to automatically try older datasets that may have bet
 
 ---
 
-## macOS: GDAL / PROJ Notes (Advanced)
-On macOS, LiDAR processing may require GDAL/PROJ support depending on how the app is packaged.
+## macOS Standalone Release
 
-If needed, the app can detect common Homebrew install locations automatically, such as:
-
-- Apple Silicon:
-  - `/opt/homebrew/share/gdal`
-  - `/opt/homebrew/share/proj`
-
-- Intel:
-  - `/usr/local/share/gdal`
-  - `/usr/local/share/proj`
-
-Most users will not need to do anything manually.
+The version 3.0 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
+Users do not need Homebrew, Python, QGIS, PDAL, or GDAL. Internet access is still
+required to locate and download USGS LiDAR data and periodically refresh USGS
+metadata.
 
 ---
 

@@ -7,8 +7,8 @@ A simplified desktop LiDAR hillshade application for non-technical users.
 User enters coordinates, clicks one button, and the app automatically finds
 LiDAR data online, processes it, generates a hillshade, and opens an interactive viewer.
 
-This app is designed to run as a standalone one-file executable with all
-binaries (pdal, gdaldem) and libraries bundled.
+This app is designed to run as a standalone application with all binaries
+(PDAL and GDAL) and required libraries bundled.
 """
 
 import os
@@ -77,11 +77,13 @@ if not getattr(sys, 'frozen', False):
 
 from main_gui import HillshadeExplorerApp
 
+APP_VERSION = "3.0"
+
 
 def main():
     """Launch the LiDAR Hillshade Explorer application"""
     root = tk.Tk()
-    root.title("LiDAR Hillshade Explorer")
+    root.title(f"LiDAR Hillshade Explorer {APP_VERSION}")
 
     # Set window icon for taskbar and title bar
     try:
