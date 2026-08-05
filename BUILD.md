@@ -194,7 +194,7 @@ Create a ZIP that preserves the bundle's links and permissions:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.zip"
+  "LiDAR-Hillshade-3.0-Mac.zip"
 ```
 
 The built `.app` can be distributed as:

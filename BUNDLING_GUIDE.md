@@ -161,7 +161,7 @@ The `.app` bundle can be distributed as:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.zip"
+  "LiDAR-Hillshade-3.0-Mac.zip"
 ```
 
 ### Windows

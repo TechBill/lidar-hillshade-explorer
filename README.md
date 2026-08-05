@@ -55,24 +55,28 @@ The current 3.0 macOS release is built for Apple Silicon and runs natively on
 M1, M2, M3, M4, and newer ARM64 Macs. It does not require Rosetta. An Intel Mac
 requires a separately built x86_64 release.
 
-If macOS blocks the app with a message like:
+This free, open-source hobby release is **ad-hoc signed but not Apple-notarized**.
+Apple requires a paid Developer Program membership for Developer ID signing and
+notarization, so macOS may show **Move to Trash** or a message like:
 
 "LiDAR Hillshade Explorer can't be opened because Apple cannot check it for malicious software."
 
 Do this:
 
-1. Try opening the app once (so macOS registers it)
-2. Go to **System Settings**
-3. Click **Privacy & Security**
-4. Scroll down to the **Security** section
-5. Click **Open Anyway**
-6. Confirm again if prompted
+1. If the warning offers **Move to Trash**, close the warning without moving the app.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll down to the **Security** section.
+4. Find the message that LiDAR Hillshade Explorer was blocked.
+5. Click **Open Anyway**, authenticate if requested, and confirm **Open**.
 
 After you approve it once, the app should open normally in the future.
+Only override this protection for a copy obtained from the project release you
+trust. The warning is expected for this unnotarized build, but a warning by
+itself is not proof that an arbitrary download is safe.
 
 ### Install the macOS 3.0 Release
 
-1. Extract `LiDAR-Hillshade-Explorer-3.0-macOS-arm64.zip`.
+1. Extract `LiDAR-Hillshade-3.0-Mac.zip`.
 2. Drag **LiDAR Hillshade Explorer.app** into **Applications**.
 3. Open the app. If macOS blocks the first launch, follow the steps above.
 
@@ -313,7 +317,7 @@ Create a ZIP:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.zip"
+  "LiDAR-Hillshade-3.0-Mac.zip"
 ```
 
 Or create a DMG:

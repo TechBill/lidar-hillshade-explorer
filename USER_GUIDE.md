@@ -21,20 +21,24 @@ Pro, iMac, Mac mini, Mac Studio, and Mac Pro systems. It runs natively on M1,
 M2, M3, M4, and newer Apple Silicon chips. Intel Macs require a separately
 built x86_64 version.
 
-When opening LiDAR Hillshade Explorer for the first time, macOS may block it and show a message like:
+This free, open-source hobby release is **ad-hoc signed but not Apple-notarized**.
+Apple requires a paid Developer Program membership for Developer ID signing and
+notarization, so macOS may show **Move to Trash** or a message like:
 
 "LiDAR Hillshade Explorer can't be opened because Apple cannot check it for malicious software."
 
 If that happens:
 
-1. Try opening the app once (so macOS registers it)
-2. Go to **System Settings**
-3. Click **Privacy & Security**
-4. Scroll down to the **Security** section
-5. You should see a message about LiDAR Hillshade Explorer being blocked → click **Open Anyway**
-6. Confirm again if prompted
+1. If the warning offers **Move to Trash**, close the warning without moving the app.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll down to the **Security** section.
+4. Find the message that LiDAR Hillshade Explorer was blocked.
+5. Click **Open Anyway**, authenticate if requested, and confirm **Open**.
 
 After you approve it once, the app should open normally in the future.
+Only override this protection for a copy obtained from the project release you
+trust. The warning is expected for this unnotarized build, but it is not proof
+that an arbitrary download is safe.
 
 ---
 
