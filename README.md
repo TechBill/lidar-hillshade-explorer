@@ -76,7 +76,7 @@ itself is not proof that an arbitrary download is safe.
 
 ### Install the macOS 3.0 Release
 
-1. Extract `LiDAR-Hillshade-3.0-Mac.zip`.
+1. Extract `LiDAR-Hillshade-3.0-Mac-ARM64.zip`.
 2. Drag **LiDAR Hillshade Explorer.app** into **Applications**.
 3. Open the app. If macOS blocks the first launch, follow the steps above.
 
@@ -337,7 +337,7 @@ Create a ZIP:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-3.0-Mac.zip"
+  "LiDAR-Hillshade-3.0-Mac-ARM64.zip"
 ```
 
 Or create a DMG:
