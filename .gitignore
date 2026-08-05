@@ -3,6 +3,14 @@ venv/
 env/
 .venv/
 __pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
 *.pyc
 *.pyo
 *.pyd
@@ -11,31 +19,47 @@ __pycache__/
 *.egg
 *.egg-info/
 dist-info/
+pip-wheel-metadata/
 
-# PyInstaller
+# Build and release artifacts
 build/
 dist/
+release/
+releases/
+*.app/
+*.dmg
+*.pkg
+*.zip
+*.msi
+*.msix
+*.exe
 *.spec.lock
 
 # Project output files (generated LAZ, DEM, hillshades)
 output/
 
-# Bundled binaries (large files, can be rebuilt)
-# Allow platform-specific directories, but ignore binaries themselves
-bundle_bins/*/gdaldem
-bundle_bins/*/pdal
-bundle_bins/*/pdal_wrench
-bundle_bins/*/libs/
-bundle_bins/*/gdal_data/
-bundle_bins/*/proj_data/
-bundle_bins/*/*.exe
-bundle_bins/*/*.dll
+# Platform binaries and geospatial data are generated locally by the bundling
+# scripts. Keep only .gitkeep placeholders so every OS starts from source.
+bundle_bins/*/*
+!bundle_bins/*/.gitkeep
 
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
 Macintosh HD
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
 
 # IDE
 .vscode/
@@ -46,6 +70,8 @@ Macintosh HD
 
 # Environment
 .env
+.env.*
+!.env.example
 .env.local
 
 # User config (stored in ~/Library/Application Support/)
@@ -53,3 +79,11 @@ config.json
 
 # Logs
 *.log
+
+# Temporary and local cache files
+*.tmp
+*.temp
+*.bak
+*.orig
+WESM.csv
+aws_resources.geojson

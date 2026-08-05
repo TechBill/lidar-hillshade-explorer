@@ -12,6 +12,10 @@ The application supports multiple platforms with platform-specific binary bundle
 
 The build process automatically detects your platform and uses the appropriate bundle directory.
 
+Only `.gitkeep` placeholders in these directories belong in Git. Executables,
+dynamic libraries, GDAL/PROJ data, generated apps, release archives, and test
+outputs are intentionally ignored and must be regenerated on the target OS.
+
 ## Prerequisites
 
 ### All Platforms

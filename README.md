@@ -181,6 +181,26 @@ Accessed via the **Advanced Settings** button on the main screen:
 
 This section explains how to build LiDAR Hillshade Explorer as a **standalone application** with all binaries and libraries bundled.
 
+### GitHub Repository and Cross-Platform Builds
+
+The GitHub repository intentionally contains source code, documentation, icons,
+tests, and build scripts only. Generated applications, release archives, LiDAR
+outputs, virtual environments, and platform-specific PDAL/GDAL binaries are
+excluded by `.gitignore`.
+
+Each release must be assembled on its target platform because native binaries
+cannot be shared between architectures:
+
+| Target | Bundle directory | Prepare dependencies |
+|--------|------------------|----------------------|
+| Apple Silicon Mac | `bundle_bins/macos-arm64/` | `python3 bundle_dependencies.py` on an ARM64 Mac |
+| Intel Mac | `bundle_bins/macos-x86_64/` | `python3 bundle_dependencies.py` on an Intel Mac |
+| Windows x86_64 | `bundle_bins/windows-x86_64/` | `python bundle_dependencies_windows.py` on Windows |
+
+Only `.gitkeep` placeholders from these directories are committed. After
+cloning, run the appropriate dependency collector and PyInstaller build on the
+target operating system.
+
 ### Prerequisites
 
 #### macOS
