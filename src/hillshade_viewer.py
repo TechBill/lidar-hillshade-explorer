@@ -115,10 +115,10 @@ class HillshadeViewer:
 
         # Scrollable left panel keeps metadata and styling controls accessible
         # on shorter displays and when Custom style controls are expanded.
-        sidebar = tk.Frame(paned, bd=1, relief="groove", width=285)
-        paned.add(sidebar, minsize=260, width=285)
+        sidebar = tk.Frame(paned, bd=1, relief="groove", width=315)
+        paned.add(sidebar, minsize=295, width=315)
 
-        sidebar_canvas = tk.Canvas(sidebar, highlightthickness=0, width=265)
+        sidebar_canvas = tk.Canvas(sidebar, highlightthickness=0, width=295)
         sidebar_scrollbar = ttk.Scrollbar(
             sidebar, orient=tk.VERTICAL, command=sidebar_canvas.yview
         )
@@ -156,7 +156,7 @@ class HillshadeViewer:
         tk.Label(
             info_frame,
             text="LiDAR Dataset",
-            font=("Helvetica", 10, "bold")
+            font=("", 11, "bold")
         ).pack(anchor=tk.W)
 
         dataset_rows = [
@@ -179,21 +179,21 @@ class HillshadeViewer:
         tk.Label(
             info_frame,
             text="LiDAR Points & Output",
-            font=("Helvetica", 10, "bold")
+            font=("", 11, "bold")
         ).pack(anchor=tk.W)
 
         if point_spacing > 0:
             tk.Label(
                 info_frame,
                 text=f"Point spacing: {point_spacing:.3f} m",
-                font=("Helvetica", 9)
+                font=("", 10)
             ).pack(anchor=tk.W)
 
         if dem_resolution > 0:
             tk.Label(
                 info_frame,
                 text=f"Generated DEM: {dem_resolution:.2f} m",
-                font=("Helvetica", 9)
+                font=("", 10)
             ).pack(anchor=tk.W)
 
         # Zoom section
@@ -388,17 +388,17 @@ class HillshadeViewer:
         tk.Label(
             row,
             text=f"{label}:",
-            font=("Helvetica", 8, "bold"),
-            width=13,
+            font=("", 10, "bold"),
+            width=12,
             anchor=tk.NW,
         ).pack(side=tk.LEFT)
         tk.Label(
             row,
             text=value_text,
-            font=("Helvetica", 8),
+            font=("", 10),
             justify=tk.LEFT,
             anchor=tk.NW,
-            wraplength=165,
+            wraplength=190,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def _on_style_changed(self):
