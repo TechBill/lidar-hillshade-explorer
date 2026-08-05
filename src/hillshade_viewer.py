@@ -6,6 +6,7 @@ Pillow-based viewer with zoom/pan controls and style switching.
 Based on geoimage-kmz viewer pattern.
 """
 
+import math
 import threading
 import shutil
 import tkinter as tk
@@ -65,11 +66,12 @@ class HillshadeViewer:
         except Exception:
             pass  # Icon not critical
 
-        # Center window on screen
-        window_width = 1200
-        window_height = 800
+        # Fit the viewer to the current display instead of extending beyond
+        # shorter laptop screens.
         screen_width = self.window.winfo_screenwidth()
         screen_height = self.window.winfo_screenheight()
+        window_width = min(1200, max(700, screen_width - 40))
+        window_height = min(800, max(600, screen_height - 80))
         center_x = int((screen_width - window_width) / 2)
         center_y = int((screen_height - window_height) / 2)
         self.window.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
@@ -90,8 +92,7 @@ class HillshadeViewer:
 
         # Zoom throttling
         self._pending_zoom_id: Optional[str] = None
-        self._accumulated_zoom_factor = 1.0
-        self._zoom_center = (0, 0)
+        self._quality_redraw_id: Optional[str] = None
 
         # Pan state
         self._left_drag_start: Optional[tuple[int, int]] = None
@@ -112,42 +113,91 @@ class HillshadeViewer:
         paned = tk.PanedWindow(self.window, orient=tk.HORIZONTAL, sashwidth=5, bg="#cccccc")
         paned.pack(fill=tk.BOTH, expand=True)
 
-        # Left panel for controls
-        left_panel = tk.Frame(paned, bd=1, relief="groove", width=200)
-        paned.add(left_panel, minsize=200, width=200)
+        # Scrollable left panel keeps metadata and styling controls accessible
+        # on shorter displays and when Custom style controls are expanded.
+        sidebar = tk.Frame(paned, bd=1, relief="groove", width=285)
+        paned.add(sidebar, minsize=260, width=285)
+
+        sidebar_canvas = tk.Canvas(sidebar, highlightthickness=0, width=265)
+        sidebar_scrollbar = ttk.Scrollbar(
+            sidebar, orient=tk.VERTICAL, command=sidebar_canvas.yview
+        )
+        sidebar_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        sidebar_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sidebar_canvas.configure(yscrollcommand=sidebar_scrollbar.set)
+
+        left_panel = tk.Frame(sidebar_canvas)
+        sidebar_window = sidebar_canvas.create_window(
+            (0, 0), window=left_panel, anchor=tk.NW
+        )
+        left_panel.bind(
+            "<Configure>",
+            lambda event: sidebar_canvas.configure(
+                scrollregion=sidebar_canvas.bbox("all")
+            ),
+        )
+        sidebar_canvas.bind(
+            "<Configure>",
+            lambda event: sidebar_canvas.itemconfigure(
+                sidebar_window, width=event.width
+            ),
+        )
 
         # LiDAR data information at top
         info_frame = tk.Frame(left_panel)
-        info_frame.pack(pady=(10, 10), padx=10)
+        info_frame.pack(fill=tk.X, pady=(8, 4), padx=10)
 
         # Get metadata
         meta = self.metadata.get('metadata', {})
         point_spacing = meta.get('point_spacing', 0)
         dem_resolution = meta.get('dem_resolution', 0)
 
-        # Display LiDAR info
+        # Display authoritative dataset metadata above generated-output statistics.
         tk.Label(
             info_frame,
-            text="LiDAR Points",
+            text="LiDAR Dataset",
+            font=("Helvetica", 10, "bold")
+        ).pack(anchor=tk.W)
+
+        dataset_rows = [
+            ("Work unit", meta.get("workunit") or meta.get("dataset_id")),
+            ("Collected", self._format_date_range(
+                meta.get("collection_start"), meta.get("collection_end")
+            )),
+            ("Quality", self._format_quality_level(meta.get("quality_level"))),
+            ("USGS DEM", self._format_meters(meta.get("dem_gsd_meters"))),
+            ("Published", self._format_date(meta.get("lpc_publication_date"))),
+            ("Horizontal CRS", self._format_crs(meta.get("horizontal_crs"), meta.get("epsg"))),
+            ("Vertical CRS", self._format_crs(meta.get("vertical_crs"))),
+            ("Geoid", meta.get("geoid")),
+        ]
+        for label, value in dataset_rows:
+            self._add_metadata_row(info_frame, label, value)
+
+        tk.Frame(info_frame, height=1, bg="#cccccc").pack(fill=tk.X, pady=(6, 5))
+
+        tk.Label(
+            info_frame,
+            text="LiDAR Points & Output",
             font=("Helvetica", 10, "bold")
         ).pack(anchor=tk.W)
 
         if point_spacing > 0:
             tk.Label(
                 info_frame,
-                text=f"Point spacing: {point_spacing:.3f}m",
+                text=f"Point spacing: {point_spacing:.3f} m",
                 font=("Helvetica", 9)
             ).pack(anchor=tk.W)
 
         if dem_resolution > 0:
             tk.Label(
                 info_frame,
-                text=f"DEM resolution: {dem_resolution:.2f}m",
+                text=f"Generated DEM: {dem_resolution:.2f} m",
                 font=("Helvetica", 9)
             ).pack(anchor=tk.W)
 
         # Zoom section
-        tk.Label(left_panel, text="Zoom", font=("Helvetica", 10, "bold")).pack(pady=(10, 5))
+        tk.Label(left_panel, text="Zoom", font=("Helvetica", 10, "bold")).pack(pady=(4, 3))
         tk.Button(left_panel, text="Zoom +", command=lambda: self._zoom_button(1.2), width=14).pack(pady=3, padx=5)
         tk.Button(left_panel, text="Zoom -", command=lambda: self._zoom_button(1 / 1.2), width=14).pack(pady=3, padx=5)
         tk.Button(left_panel, text="Fit to Window", command=self._reset_view_to_fit, width=14).pack(pady=3, padx=5)
@@ -205,7 +255,7 @@ class HillshadeViewer:
 
         # Donate button at bottom (above close button)
         donation_frame = tk.Frame(left_panel)
-        donation_frame.pack(side=tk.BOTTOM, pady=(5, 0))
+        donation_frame.pack(pady=(5, 0))
 
         ttk.Label(
             donation_frame,
@@ -247,7 +297,7 @@ class HillshadeViewer:
         paypal_label.bind("<Leave>", on_leave)
 
         # Close button at bottom
-        tk.Button(left_panel, text="Close", command=self._on_window_close, width=14).pack(side=tk.BOTTOM, pady=10)
+        tk.Button(left_panel, text="Close", command=self._on_window_close, width=14).pack(pady=10)
 
         # Center panel for canvas
         center_frame = tk.Frame(paned, bg="#222222")
@@ -274,6 +324,82 @@ class HillshadeViewer:
 
         # Build initial dynamic controls
         self._rebuild_dynamic_controls()
+
+    @staticmethod
+    def _format_date(value) -> str:
+        """Return a compact ISO date or a consistent missing-value label."""
+        if value is None or str(value).strip() == "":
+            return "Not available"
+        return str(value).strip().replace("/", "-")
+
+    @classmethod
+    def _format_date_range(cls, start, end) -> str:
+        start_text = cls._format_date(start)
+        end_text = cls._format_date(end)
+        if start_text == "Not available" and end_text == "Not available":
+            return "Not available"
+        if start_text == "Not available":
+            return end_text
+        if end_text == "Not available" or end_text == start_text:
+            return start_text
+        return f"{start_text} – {end_text}"
+
+    @staticmethod
+    def _format_quality_level(value) -> str:
+        if value is None or str(value).strip() == "":
+            return "Not available"
+        text = str(value).strip()
+        return text if text.upper().startswith("QL") else f"QL{text}"
+
+    @staticmethod
+    def _format_meters(value) -> str:
+        if value is None or str(value).strip() == "":
+            return "Not available"
+        try:
+            return f"{float(value):g} m"
+        except (TypeError, ValueError):
+            return f"{value} m"
+
+    @staticmethod
+    def _format_epsg(value) -> str:
+        if value is None or str(value).strip() == "":
+            return "Not available"
+        return f"EPSG:{value}"
+
+    @classmethod
+    def _format_crs(cls, value, fallback=None) -> str:
+        """Format numeric WESM CRS identifiers explicitly as EPSG codes."""
+        selected = value if value is not None and str(value).strip() else fallback
+        if selected is None or str(selected).strip() == "":
+            return "Not available"
+        text = str(selected).strip()
+        if text.isdigit():
+            return cls._format_epsg(text)
+        return text
+
+    @staticmethod
+    def _add_metadata_row(parent, label: str, value) -> None:
+        """Add a compact wrapping label/value row to the dataset summary."""
+        value_text = str(value).strip() if value is not None else ""
+        if not value_text:
+            value_text = "Not available"
+        row = tk.Frame(parent)
+        row.pack(fill=tk.X, anchor=tk.W)
+        tk.Label(
+            row,
+            text=f"{label}:",
+            font=("Helvetica", 8, "bold"),
+            width=13,
+            anchor=tk.NW,
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            row,
+            text=value_text,
+            font=("Helvetica", 8),
+            justify=tk.LEFT,
+            anchor=tk.NW,
+            wraplength=165,
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def _on_style_changed(self):
         """Handle style selection change."""
@@ -1130,8 +1256,8 @@ class HillshadeViewer:
 
         self.redraw()
 
-    def redraw(self):
-        """Redraw the canvas with current image and transform."""
+    def redraw(self, resample=Image.Resampling.BILINEAR):
+        """Render only the image region visible inside the canvas viewport."""
         if not self.canvas:
             return
 
@@ -1151,14 +1277,50 @@ class HillshadeViewer:
             return
 
         iw, ih = self._pil_image.size
-        scaled_w = max(1, int(iw * self.scale))
-        scaled_h = max(1, int(ih * self.scale))
+        cw = max(1, self.canvas.winfo_width())
+        ch = max(1, self.canvas.winfo_height())
 
-        # Resize and display
-        resized = self._pil_image.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
-        self._tk_image = ImageTk.PhotoImage(resized)
+        # Convert the canvas viewport into source-image coordinates. One source
+        # pixel of padding avoids a visible seam from interpolation at the edge.
+        source_left = max(0, int(math.floor((0 - self.offset_x) / self.scale)) - 1)
+        source_top = max(0, int(math.floor((0 - self.offset_y) / self.scale)) - 1)
+        source_right = min(iw, int(math.ceil((cw - self.offset_x) / self.scale)) + 1)
+        source_bottom = min(ih, int(math.ceil((ch - self.offset_y) / self.scale)) + 1)
 
-        self.canvas.create_image(self.offset_x, self.offset_y, image=self._tk_image, anchor="nw")
+        if source_right <= source_left or source_bottom <= source_top:
+            self._tk_image = None
+            return
+
+        render_width = max(1, int(round((source_right - source_left) * self.scale)))
+        render_height = max(1, int(round((source_bottom - source_top) * self.scale)))
+        visible = self._pil_image.resize(
+            (render_width, render_height),
+            resample=resample,
+            box=(source_left, source_top, source_right, source_bottom),
+        )
+        self._tk_image = ImageTk.PhotoImage(visible)
+
+        canvas_x = self.offset_x + source_left * self.scale
+        canvas_y = self.offset_y + source_top * self.scale
+        self.canvas.create_image(canvas_x, canvas_y, image=self._tk_image, anchor="nw")
+
+    def _schedule_interactive_redraw(self, delay_ms: int = 16):
+        """Coalesce rapid zoom/pan events into approximately one render per frame."""
+        if self._pending_zoom_id is None:
+            self._pending_zoom_id = self.window.after(delay_ms, self._run_interactive_redraw)
+
+        if self._quality_redraw_id is not None:
+            self.window.after_cancel(self._quality_redraw_id)
+        self._quality_redraw_id = self.window.after(140, self._run_quality_redraw)
+
+    def _run_interactive_redraw(self):
+        self._pending_zoom_id = None
+        self.redraw(Image.Resampling.BILINEAR)
+
+    def _run_quality_redraw(self):
+        self._quality_redraw_id = None
+        if self._pending_zoom_id is None and not self._panning:
+            self.redraw(Image.Resampling.LANCZOS)
 
     def _on_canvas_configure(self, event):
         """Handle canvas resize."""
@@ -1179,39 +1341,12 @@ class HillshadeViewer:
         self.zoom_at(cw / 2, ch / 2, factor)
 
     def _on_mousewheel(self, event):
-        """Handle mousewheel zoom with throttling."""
+        """Update the transform immediately and render at most once per frame."""
         if event.delta == 0:
             return
 
-        factor = 1.15 if event.delta > 0 else 1 / 1.15
-
-        # Accumulate zoom factor
-        self._accumulated_zoom_factor *= factor
-        self._zoom_center = (event.x, event.y)
-
-        # Cancel pending zoom
-        if self._pending_zoom_id is not None:
-            self.window.after_cancel(self._pending_zoom_id)
-
-        # Schedule zoom with small delay (throttling)
-        self._pending_zoom_id = self.window.after(50, self._execute_accumulated_zoom)
-
-    def _execute_accumulated_zoom(self):
-        """Execute accumulated zoom operations."""
-        if abs(self._accumulated_zoom_factor - 1.0) < 1e-9:
-            self._accumulated_zoom_factor = 1.0
-            self._pending_zoom_id = None
-            return
-
-        # Clamp accumulated factor to prevent runaway zoom
-        self._accumulated_zoom_factor = max(0.25, min(4.0, self._accumulated_zoom_factor))
-
-        cx, cy = self._zoom_center
-        self.zoom_at(cx, cy, self._accumulated_zoom_factor)
-
-        # Reset
-        self._accumulated_zoom_factor = 1.0
-        self._pending_zoom_id = None
+        factor = 1.12 if event.delta > 0 else 1 / 1.12
+        self.zoom_at(event.x, event.y, factor)
 
     def zoom_at(self, cx: float, cy: float, factor: float):
         """Zoom at specific canvas position."""
@@ -1228,7 +1363,7 @@ class HillshadeViewer:
         self.scale = new_scale
         self.offset_x = cx - ix * self.scale
         self.offset_y = cy - iy * self.scale
-        self.redraw()
+        self._schedule_interactive_redraw()
 
     def _on_left_press(self, event):
         """Handle left mouse press."""
@@ -1250,6 +1385,7 @@ class HillshadeViewer:
         self.offset_x += dx
         self.offset_y += dy
         self.canvas.move("all", dx, dy)
+        self._schedule_interactive_redraw(delay_ms=32)
         self._left_drag_start = (event.x, event.y)
 
     def _on_left_release(self, event):
@@ -1259,3 +1395,10 @@ class HillshadeViewer:
         self.canvas.config(cursor="")
         self._left_drag_start = None
         self._panning = False
+        if self._pending_zoom_id is not None:
+            self.window.after_cancel(self._pending_zoom_id)
+            self._pending_zoom_id = None
+        if self._quality_redraw_id is not None:
+            self.window.after_cancel(self._quality_redraw_id)
+            self._quality_redraw_id = None
+        self.redraw(Image.Resampling.LANCZOS)

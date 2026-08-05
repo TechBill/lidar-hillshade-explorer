@@ -255,11 +255,15 @@ def _enrich_dataset_properties(
         year_text = collect_end[:4] or collect_start[:4]
         enriched.update(
             {
+                "workunit": record.get("workunit") or dataset_id,
                 "collection_start": collect_start or None,
                 "collection_end": collect_end or None,
                 "collection_year": int(year_text) if year_text.isdigit() else None,
                 "quality_level": ql,
                 "dem_gsd_meters": record.get("dem_gsd_meters") or None,
+                "horizontal_crs": record.get("horiz_crs") or None,
+                "vertical_crs": record.get("vert_crs") or None,
+                "geoid": record.get("geoid") or None,
                 "lpc_publication_date": (record.get("lpc_pub_date") or "").replace("/", "-") or None,
                 "metadata_link": record.get("metadata_link") or None,
                 "year_estimated": False,
@@ -270,6 +274,7 @@ def _enrich_dataset_properties(
         estimated_year = int(_extract_year(props))
         enriched.update(
             {
+                "workunit": dataset_id,
                 "collection_year": estimated_year if estimated_year > 1900 else None,
                 "quality_level": None,
                 "year_estimated": True,

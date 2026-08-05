@@ -19,10 +19,10 @@ from utils.config import (  # noqa: E402
 )
 
 
-WESM_SAMPLE = """workunit,collect_start,collect_end,ql,dem_gsd_meters,lpc_pub_date,metadata_link
-MO_SouthernMO_1_D22,2023/03/15,2023/03/20,QL 2,1,2023/12/20,https://example.test/d22
-MO_SE11County_1_B24,2024/03/17,2024/04/13,QL 1,0.5,2025/07/18,https://example.test/b24
-MO_FEMAR7_North_A1_2017,2017/01/01,2017/12/31,QL 2,1,2019/01/01,https://example.test/2017
+WESM_SAMPLE = """workunit,collect_start,collect_end,ql,dem_gsd_meters,horiz_crs,vert_crs,geoid,lpc_pub_date,metadata_link
+MO_SouthernMO_1_D22,2023/03/15,2023/03/20,QL 2,1,NAD83(2011) / UTM zone 15N,NAVD88,GEOID18,2023/12/20,https://example.test/d22
+MO_SE11County_1_B24,2024/03/17,2024/04/13,QL 1,0.5,NAD83(2011) / UTM zone 15N,NAVD88,GEOID18,2025/07/18,https://example.test/b24
+MO_FEMAR7_North_A1_2017,2017/01/01,2017/12/31,QL 2,1,NAD83 / UTM zone 15N,NAVD88,GEOID12B,2019/01/01,https://example.test/2017
 """
 
 
@@ -68,6 +68,11 @@ class WesmSelectionTests(unittest.TestCase):
         )
         self.assertEqual(props["collection_year"], 2023)
         self.assertEqual(props["quality_level"], 2)
+        self.assertEqual(props["workunit"], "MO_SouthernMO_1_D22")
+        self.assertEqual(props["horizontal_crs"], "NAD83(2011) / UTM zone 15N")
+        self.assertEqual(props["vertical_crs"], "NAVD88")
+        self.assertEqual(props["geoid"], "GEOID18")
+        self.assertEqual(props["lpc_publication_date"], "2023-12-20")
         self.assertFalse(props["year_estimated"])
 
     def test_legacy_ept_alias_matches_workunit(self):

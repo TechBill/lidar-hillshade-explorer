@@ -173,6 +173,11 @@ Example:
 
 Once the hillshade viewer opens, you can explore the terrain using several controls.
 
+The **LiDAR Dataset** section shows authoritative USGS metadata for the selected
+work unit: collection dates, quality level, source DEM resolution, publication
+date, horizontal and vertical CRS, and geoid. Point spacing and generated DEM
+resolution remain below it as processing-output statistics.
+
 ## Navigation
 
 | Control | Action |
@@ -183,7 +188,9 @@ Once the hillshade viewer opens, you can explore the terrain using several contr
 | **Zoom - button** | Zoom out (centered on canvas) |
 | **Fit to Window** | Reset zoom to show entire hillshade |
 
-**Zoom limits:** The viewer caps zoom at 1000% to prevent freezing. Rapid mouse wheel scrolling is throttled for smooth performance.
+**Zoom limits:** The viewer caps zoom at 1000%. Zooming and panning render only
+the visible part of large hillshades, keeping navigation responsive without
+reducing exported image resolution.
 
 ---
 
