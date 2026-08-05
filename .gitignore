@@ -1,0 +1,55 @@
+# Python
+venv/
+env/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist-info/
+
+# PyInstaller
+build/
+dist/
+*.spec.lock
+
+# Project output files (generated LAZ, DEM, hillshades)
+output/
+
+# Bundled binaries (large files, can be rebuilt)
+# Allow platform-specific directories, but ignore binaries themselves
+bundle_bins/*/gdaldem
+bundle_bins/*/pdal
+bundle_bins/*/pdal_wrench
+bundle_bins/*/libs/
+bundle_bins/*/gdal_data/
+bundle_bins/*/proj_data/
+bundle_bins/*/*.exe
+bundle_bins/*/*.dll
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Macintosh HD
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+
+# User config (stored in ~/Library/Application Support/)
+config.json
+
+# Logs
+*.log
