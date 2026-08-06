@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 3.0
+# LiDAR Hillshade Explorer 3.2.3
 
 LiDAR Hillshade Explorer is a lightweight desktop app for exploring terrain using LiDAR elevation data.  
 Enter coordinates, click one button, and the app downloads available LiDAR, processes it, generates a hillshade image, and opens an interactive viewer.
@@ -6,6 +6,47 @@ Enter coordinates, click one button, and the app downloads available LiDAR, proc
 This tool is designed for research and visualization. It is **not survey-grade GIS**.
 
 ---
+
+## What's New in 3.2.3
+
+- Fixed the Export GeoTIFF/KMZ file-selection lists sometimes showing what
+  looked like duplicate entries (two "Classic.tif", two of the same
+  Archaeology preset, etc). These lists were including every hillshade left
+  in the shared output folder, including ones from a previously viewed
+  location if you generated more than one hillshade without returning to
+  the main menu in between — and the checkbox labels drop the location so
+  two different files could display identically. Both dialogs now only
+  list files belonging to the location currently open in the viewer.
+
+## What's New in 3.2.2
+
+- Fixed the actual remaining cause of KMZ export failing with
+  `CRSError: ... Cannot find proj.db` (including on the machine the app is
+  built on). Root-caused with an in-app self-test: `rasterio`'s CRS/GDAL
+  layer — the one KMZ export's coordinate transform depends on — does not
+  reliably auto-locate its bundled PROJ database once PyInstaller relocates
+  everything inside the `.app`, even though `pyproj`'s own transformer finds
+  its copy fine on its own. The app now points `GDAL_DATA`/`PROJ_LIB` at the
+  data already bundled alongside the app's PDAL/GDAL binaries so that lookup
+  always succeeds, verified against a real exported hillshade end to end.
+
+## What's New in 3.2.1
+
+- Fixed a second cause of KMZ export failing on some Macs: the LiDAR
+  download/clip step no longer redirects `pyproj` at a system Homebrew PROJ
+  install when one happens to be present. That redirect stuck for the rest
+  of the run and could leave `rasterio`'s coordinate transform (used only by
+  KMZ export) working against a mismatched PROJ database on machines whose
+  Homebrew PROJ version didn't match what the app was built against.
+- KMZ export failures that still occur now report the actual per-file reason
+  (not just "No valid TIF files could be processed") so a failure can be
+  diagnosed from the error dialog alone.
+
+## What's New in 3.2
+
+- Fixed KMZ export failing on some Macs (e.g. machines without Homebrew's GDAL/PROJ installed). The packaged app no longer overrides GDAL/PROJ library resolution for the whole process — `rasterio`/`pyproj` now use their own bundled, version-matched data as intended, which is what the KMZ export's coordinate transform depends on.
+- Fixed the Advanced Settings dialog so the Save/Close/Cancel buttons can no longer be pushed off-screen on shorter displays: the button row is now pinned in place and the settings above it scroll independently.
+- KMZ export failures now always show a real error message instead of a blank dialog.
 
 ## What's New in 3.0
 
@@ -51,7 +92,7 @@ Because this app is distributed as a downloadable app (not from the official App
 
 ### macOS (Apple Silicon)
 
-The current 3.0 macOS release is built for Apple Silicon and runs natively on
+The current 3.2.3 macOS release is built for Apple Silicon and runs natively on
 M1, M2, M3, M4, and newer ARM64 Macs. It does not require Rosetta. An Intel Mac
 requires a separately built x86_64 release.
 
@@ -74,9 +115,9 @@ Only override this protection for a copy obtained from the project release you
 trust. The warning is expected for this unnotarized build, but a warning by
 itself is not proof that an arbitrary download is safe.
 
-### Install the macOS 3.0 Release
+### Install the macOS 3.2.3 Release
 
-1. Extract `LiDAR-Hillshade-3.0-Mac-ARM64.zip`.
+1. Extract `LiDAR-Hillshade-3.2.3-Mac-ARM64.zip`.
 2. Drag **LiDAR Hillshade Explorer.app** into **Applications**.
 3. Open the app. If macOS blocks the first launch, follow the steps above.
 
@@ -337,7 +378,7 @@ Create a ZIP:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-3.0-Mac-ARM64.zip"
+  "LiDAR-Hillshade-3.2.3-Mac-ARM64.zip"
 ```
 
 Or create a DMG:
@@ -351,7 +392,7 @@ create-dmg \
   --window-size 600 400 \
   --icon-size 100 \
   --app-drop-link 450 185 \
-  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.dmg" \
+  "LiDAR-Hillshade-Explorer-3.2.3-macOS-arm64.dmg" \
   "dist/LiDAR Hillshade Explorer.app"
 ```
 

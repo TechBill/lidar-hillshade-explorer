@@ -681,14 +681,27 @@ class HillshadeViewer:
         """
         from utils.config import get_output_dir
 
-        # Get all TIF files from hillshades directory
+        # Get TIF files from hillshades directory belonging to the AOI
+        # currently open in this viewer. The folder is shared across
+        # sessions and isn't cleared until the viewer window is closed
+        # (or the app quits), so it can still hold hillshades from a
+        # previous location if this one was reached without going back to
+        # the main menu in between. Filtering by the current DEM's stem
+        # keeps those out of the list - otherwise two unrelated locations'
+        # "Classic.tif" (etc.) are indistinguishable in the checkbox list
+        # since the display name strips the location prefix.
         output_dir = get_output_dir()
         hillshades_dir = output_dir / "hillshades"
 
         if not hillshades_dir.exists():
             return None
 
-        tif_files = sorted(hillshades_dir.glob("*.tif"), key=lambda p: p.stat().st_mtime, reverse=True)
+        current_stem = self.dem_path.stem
+        tif_files = sorted(
+            (p for p in hillshades_dir.glob("*.tif") if p.stem.startswith(f"{current_stem}_")),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
 
         if not tif_files:
             messagebox.showwarning(
@@ -899,7 +912,15 @@ class HillshadeViewer:
         if not hillshades_dir.exists():
             return None
 
-        tif_files = sorted(hillshades_dir.glob("*.tif"), key=lambda p: p.stat().st_mtime, reverse=True)
+        # Only this viewer's current AOI - see the matching comment in
+        # _show_kmz_export_dialog for why (the folder can hold leftover
+        # files from a previous, unrelated location).
+        current_stem = self.dem_path.stem
+        tif_files = sorted(
+            (p for p in hillshades_dir.glob("*.tif") if p.stem.startswith(f"{current_stem}_")),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
 
         if not tif_files:
             messagebox.showwarning(
@@ -1158,7 +1179,15 @@ class HillshadeViewer:
                 ))
 
             except Exception as e:
-                error_message[0] = str(e)
+                # str(e) can be empty for some exceptions (e.g. bare OSError
+                # subclasses raised by native GDAL/PROJ bindings), which
+                # would otherwise show a blank, undiagnosable error dialog.
+                # Fall back to the exception type name and include a
+                # traceback in the log so reported failures are actionable.
+                import traceback
+                detail = str(e).strip() or repr(e)
+                error_message[0] = f"{type(e).__name__}: {detail}"
+                traceback.print_exc()
 
             # Close dialog after brief delay
             import time

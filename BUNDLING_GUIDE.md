@@ -1,4 +1,4 @@
-# Bundling Guide for LiDAR Hillshade Explorer 3.0
+# Bundling Guide for LiDAR Hillshade Explorer 3.2.3
 
 ## Summary
 
@@ -161,7 +161,7 @@ The `.app` bundle can be distributed as:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-3.0-Mac-ARM64.zip"
+  "LiDAR-Hillshade-3.2.3-Mac-ARM64.zip"
 ```
 
 ### Windows

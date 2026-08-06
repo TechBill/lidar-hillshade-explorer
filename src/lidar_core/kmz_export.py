@@ -194,6 +194,7 @@ def tifs_to_kmz(
         # List to store ground overlays info
         overlays = []
         png_files = []
+        failures: list[tuple[str, str]] = []
 
         # Process each TIF file
         total_files = len(tif_paths)
@@ -225,7 +226,14 @@ def tifs_to_kmz(
             try:
                 bounds = _tif_to_png_and_bounds(tif_path, png_path)
             except Exception as exc:
-                _log(log, f"Warning: Failed to open {tif_path.name} ({exc}), skipping...")
+                reason = str(exc).strip() or repr(exc)
+                # Always print, not just when a log callback is wired up -
+                # the caller here (KMZ export) doesn't currently pass one,
+                # so this is the only trace of *why* a file failed.
+                message = f"Warning: Failed to open {tif_path.name} ({type(exc).__name__}: {reason}), skipping..."
+                print(message)
+                _log(log, message)
+                failures.append((tif_path.name, f"{type(exc).__name__}: {reason}"))
                 continue
 
             # Store overlay info
@@ -237,7 +245,13 @@ def tifs_to_kmz(
             png_files.append(png_path)
 
         if not overlays:
-            raise RuntimeError("No valid TIF files could be processed")
+            detail = "; ".join(f"{name}: {reason}" for name, reason in failures[:5])
+            if len(failures) > 5:
+                detail += f"; ... and {len(failures) - 5} more"
+            raise RuntimeError(
+                f"No valid TIF files could be processed. {detail}" if detail
+                else "No valid TIF files could be processed"
+            )
 
         # Step 2: Create KML with multiple GroundOverlays
         kml_path = temp_path / "doc.kml"
