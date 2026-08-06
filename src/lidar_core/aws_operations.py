@@ -673,23 +673,18 @@ def clip_aws_aoi_to_ground_laz(
 
     _log(log, f"Output: {clipped_name}")
 
-    # Convert bbox from EPSG:4326 to dataset CRS for proper clipping
-    # Set up pyproj to use Homebrew's PROJ data before importing
-    import os
-    from pathlib import Path
-    for proj_path in ["/opt/homebrew/share/proj", "/usr/local/share/proj"]:
-        if Path(proj_path).exists():
-            os.environ["PROJ_LIB"] = proj_path
-            os.environ["PROJ_DATA"] = proj_path
-            break
-    
+    # Convert bbox from EPSG:4326 to dataset CRS for proper clipping.
+    #
+    # Deliberately NOT pointing pyproj at a system Homebrew PROJ
+    # install here (this used to do that). pyproj ships its own bundled,
+    # version-matched proj.db and finds it automatically - `dem_generator.py`
+    # uses plain `Transformer.from_crs(...)` the same way with no override
+    # and that works fine. Forcing PROJ_LIB/PROJ_DATA/pyproj.datadir at an
+    # arbitrary system install (only present on some dev machines, and not
+    # guaranteed to match the version pyproj/rasterio were built against)
+    # previously caused CRS-transform failures - notably KMZ export's
+    # rasterio.warp.transform_bounds() - on end-user Macs. See AGENTS.md.
     from pyproj import Transformer
-    import pyproj.datadir
-    # Set pyproj's data directory to use Homebrew's PROJ data
-    for proj_path in ["/opt/homebrew/share/proj", "/usr/local/share/proj"]:
-        if Path(proj_path).exists():
-            pyproj.datadir.set_data_dir(proj_path)
-            break
 
     target_epsg = f"EPSG:{epsg_code}"
     transformer = Transformer.from_crs("EPSG:4326", target_epsg, always_xy=True)

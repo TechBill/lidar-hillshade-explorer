@@ -1,4 +1,4 @@
-# Building LiDAR Hillshade Explorer 3.0
+# Building LiDAR Hillshade Explorer 3.2.3
 
 This document provides instructions for building platform-specific binaries of LiDAR Hillshade Explorer.
 
@@ -198,7 +198,7 @@ Create a ZIP that preserves the bundle's links and permissions:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-3.0-Mac-ARM64.zip"
+  "LiDAR-Hillshade-3.2.3-Mac-ARM64.zip"
 ```
 
 The built `.app` can be distributed as:
@@ -218,7 +218,7 @@ create-dmg \
   --window-size 600 400 \
   --icon-size 100 \
   --app-drop-link 425 120 \
-  "LiDAR-Hillshade-Explorer-3.0-macOS-arm64.dmg" \
+  "LiDAR-Hillshade-Explorer-3.2.3-macOS-arm64.dmg" \
   "dist/LiDAR Hillshade Explorer.app"
 ```
 

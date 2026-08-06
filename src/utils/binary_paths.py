@@ -269,16 +269,19 @@ def get_bundled_lib_env() -> Dict[str, str]:
             if bundle_dir.exists():
                 lib_paths.append(str(bundle_dir))
 
-            # Set GDAL_DATA and PROJ_LIB from Homebrew paths
-            for path in ["/opt/homebrew/share/gdal", "/usr/local/share/gdal"]:
-                if Path(path).exists():
-                    env["GDAL_DATA"] = path
+            # Set GDAL_DATA and PROJ_LIB for the pdal/gdaldem subprocess.
+            # Prefer the data bundled alongside those binaries (works on any
+            # Mac, no Homebrew required) and only fall back to a system
+            # Homebrew install for local/dev runs.
+            for candidate in [bundle_dir / "gdal_data", Path("/opt/homebrew/share/gdal"), Path("/usr/local/share/gdal")]:
+                if candidate.exists():
+                    env["GDAL_DATA"] = str(candidate)
                     break
 
-            for path in ["/opt/homebrew/share/proj", "/usr/local/share/proj"]:
-                if Path(path).exists():
-                    env["PROJ_LIB"] = path
-                    env["PROJ_DATA"] = path
+            for candidate in [bundle_dir / "proj_data", Path("/opt/homebrew/share/proj"), Path("/usr/local/share/proj")]:
+                if candidate.exists():
+                    env["PROJ_LIB"] = str(candidate)
+                    env["PROJ_DATA"] = str(candidate)
                     break
 
             # Set library path - our paths FIRST to override rasterio's bundled libs
@@ -453,39 +456,43 @@ def setup_bundled_environment():
                         break
 
         elif sys.platform == "darwin":
-            # Set GDAL_DATA - try bundled first, then Homebrew
-            if "GDAL_DATA" not in os.environ:
-                gdal_data = bundle_dir / "share" / "gdal"
-                if gdal_data.exists():
-                    os.environ["GDAL_DATA"] = str(gdal_data)
-                else:
-                    for path in ["/opt/homebrew/share/gdal", "/usr/local/share/gdal"]:
-                        if Path(path).exists():
-                            os.environ["GDAL_DATA"] = path
-                            break
+            # Point GDAL_DATA / PROJ_LIB / PROJ_DATA at the data bundled at
+            # the app root (bundle_dir / "gdal_data" and "proj_data" - the
+            # same ones get_bundled_lib_env() uses for the pdal/gdaldem
+            # subprocess).
+            #
+            # Root-caused with a self-test hook run inside the actual
+            # frozen .app (see git history / AGENTS.md for the harness):
+            # pyproj's own `Transformer` resolves its bundled proj.db fine
+            # on its own, with or without this env var. But rasterio's CRS
+            # layer goes through GDAL's *separate* OSR/PROJ context (e.g.
+            # `rasterio.crs.CRS.from_epsg`, used inside
+            # `rasterio.warp.transform_bounds` - the one call KMZ export
+            # needs), and that context's auto-detection does not reliably
+            # find pyproj's bundled proj.db once PyInstaller has relocated
+            # everything under Contents/Frameworks. Without this env var it
+            # fails with "PROJ: internal_proj_create_from_database: Cannot
+            # find proj.db" - reproduced even on the machine the app was
+            # built on, not just on other users' Macs.
+            #
+            # Explicitly setting PROJ_DATA/GDAL_DATA to a real, always-
+            # bundled proj.db/gdal_data sidesteps that. A newer/older
+            # proj.db than the one pyproj was built against is fine in
+            # practice - PROJ's on-disk database layout is designed to be
+            # read across nearby PROJ versions (verified: a PROJ
+            # 9.8-derived proj.db loads and transforms fine under pyproj's
+            # bundled 9.5 library). We do NOT set DYLD_LIBRARY_PATH here -
+            # only the *data* lookup needs pointing, not which
+            # libgdal/libproj actually gets loaded, and forcing that is a
+            # separate, unnecessary risk.
+            gdal_data = bundle_dir / "gdal_data"
+            if gdal_data.exists():
+                os.environ["GDAL_DATA"] = str(gdal_data)
 
-            # Set PROJ_LIB and PROJ_DATA - try bundled first, then Homebrew
-            if "PROJ_LIB" not in os.environ:
-                proj_lib = bundle_dir / "share" / "proj"
-                if proj_lib.exists():
-                    os.environ["PROJ_LIB"] = str(proj_lib)
-                    os.environ["PROJ_DATA"] = str(proj_lib)
-                else:
-                    for path in ["/opt/homebrew/share/proj", "/usr/local/share/proj"]:
-                        if Path(path).exists():
-                            os.environ["PROJ_LIB"] = path
-                            os.environ["PROJ_DATA"] = path
-                            break
-
-            # Set library path for the main process as well
-            libs_dir = bundle_dir / "bin" / "libs"
-            if libs_dir.exists():
-                existing = os.environ.get("DYLD_LIBRARY_PATH", "")
-                if str(libs_dir) not in existing:
-                    if existing:
-                        os.environ["DYLD_LIBRARY_PATH"] = f"{libs_dir}:{existing}"
-                    else:
-                        os.environ["DYLD_LIBRARY_PATH"] = str(libs_dir)
+            proj_data = bundle_dir / "proj_data"
+            if proj_data.exists():
+                os.environ["PROJ_LIB"] = str(proj_data)
+                os.environ["PROJ_DATA"] = str(proj_data)
 
     else:
         # Development mode - set up from bundled bins or conda

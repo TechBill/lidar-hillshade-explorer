@@ -827,10 +827,18 @@ class HillshadeExplorerApp:
         # Create dialog window
         dialog = tk.Toplevel(self.root)
         dialog.title("Advanced Settings")
-        dialog.geometry("650x760")
         dialog.transient(self.root)
         dialog.grab_set()
-        dialog.resizable(False, False)
+        dialog.resizable(True, True)
+        dialog.minsize(500, 360)
+
+        # Cap the dialog to the screen height so the Save/Close/Cancel
+        # buttons can never land off-screen on smaller displays (e.g. a
+        # laptop with a shorter panel than the 760px this dialog wants).
+        # Content that doesn't fit becomes scrollable below.
+        dialog_width = 650
+        dialog_height = min(760, dialog.winfo_screenheight() - 100)
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
 
         # Center dialog on parent window
         dialog.update_idletasks()
@@ -838,15 +846,71 @@ class HillshadeExplorerApp:
         parent_y = self.root.winfo_y()
         parent_width = self.root.winfo_width()
         parent_height = self.root.winfo_height()
-        dialog_width = dialog.winfo_width()
-        dialog_height = dialog.winfo_height()
         x = parent_x + (parent_width - dialog_width) // 2
         y = parent_y + (parent_height - dialog_height) // 2
         dialog.geometry(f"+{x}+{y}")
 
-        # Main frame
-        main_frame = ttk.Frame(dialog, padding=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # Outer frame: holds a fixed button bar at the bottom and a
+        # scrollable content area above it, so the buttons stay reachable
+        # no matter how tall the settings content or how short the screen.
+        outer_frame = ttk.Frame(dialog)
+        outer_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Buttons - packed first, at the bottom, so they always keep their
+        # space and are never pushed out of view. No fill/expand, so the
+        # block of buttons stays centered like it was before.
+        btn_frame = ttk.Frame(outer_frame, padding=(0, 10))
+        btn_frame.pack(side=tk.BOTTOM)
+        ttk.Separator(outer_frame, orient=tk.HORIZONTAL).pack(side=tk.BOTTOM, fill=tk.X)
+
+        # Scrollable content area (canvas + vertical scrollbar)
+        scroll_container = ttk.Frame(outer_frame)
+        scroll_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        content_canvas = tk.Canvas(scroll_container, highlightthickness=0)
+        content_scrollbar = ttk.Scrollbar(scroll_container, orient=tk.VERTICAL, command=content_canvas.yview)
+        content_canvas.configure(yscrollcommand=content_scrollbar.set)
+        content_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        content_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Main frame (the actual scrollable content)
+        main_frame = ttk.Frame(content_canvas, padding=20)
+        main_frame_window = content_canvas.create_window((0, 0), window=main_frame, anchor=tk.NW)
+
+        def _on_main_frame_configure(event=None):
+            content_canvas.configure(scrollregion=content_canvas.bbox("all"))
+
+        def _on_canvas_configure(event):
+            # Keep the inner frame as wide as the canvas so content doesn't
+            # need to scroll horizontally too.
+            content_canvas.itemconfig(main_frame_window, width=event.width)
+
+        main_frame.bind("<Configure>", _on_main_frame_configure)
+        content_canvas.bind("<Configure>", _on_canvas_configure)
+
+        def _on_mousewheel(event):
+            if getattr(event, "num", None) == 4:
+                content_canvas.yview_scroll(-1, "units")
+            elif getattr(event, "num", None) == 5:
+                content_canvas.yview_scroll(1, "units")
+            elif getattr(event, "delta", 0) < 0:
+                content_canvas.yview_scroll(1, "units")
+            elif getattr(event, "delta", 0) > 0:
+                content_canvas.yview_scroll(-1, "units")
+
+        # Scoped to this modal dialog (grab_set already restricts input to
+        # it), and cleaned up on close so it doesn't leak to other windows.
+        content_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        content_canvas.bind_all("<Button-4>", _on_mousewheel)
+        content_canvas.bind_all("<Button-5>", _on_mousewheel)
+
+        def _unbind_mousewheel(event=None):
+            if event is None or event.widget is dialog:
+                content_canvas.unbind_all("<MouseWheel>")
+                content_canvas.unbind_all("<Button-4>")
+                content_canvas.unbind_all("<Button-5>")
+
+        dialog.bind("<Destroy>", _unbind_mousewheel)
 
         # Title
         ttk.Label(
@@ -1005,10 +1069,6 @@ class HillshadeExplorerApp:
             command=reset_dem_defaults,
             width=18
         ).pack(anchor=tk.CENTER)
-
-        # Buttons
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(pady=(10, 0))
 
         def save_settings():
             # Save binary overrides

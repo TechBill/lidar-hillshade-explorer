@@ -77,7 +77,7 @@ if not getattr(sys, 'frozen', False):
 
 from main_gui import HillshadeExplorerApp
 
-APP_VERSION = "3.0"
+APP_VERSION = "3.2.3"
 
 
 def main():
