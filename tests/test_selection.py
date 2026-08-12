@@ -7,9 +7,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from lidar_core.aws_operations import (  # noqa: E402
+    MIN_WESM_RECORDS,
     _dataset_sort_key,
     _enrich_dataset_properties,
     _parse_wesm_csv,
+    _validate_wesm_records,
 )
 from utils.config import (  # noqa: E402
     TERRAIN_STYLE_CONTINUOUS,
@@ -102,6 +104,18 @@ class WesmSelectionTests(unittest.TestCase):
             _dataset_sort_key("MO_SE11County_1_B24", newer),
             _dataset_sort_key("MO_SouthernMO_1_D22", older),
         )
+
+    def test_validation_rejects_truncated_nationwide_export(self):
+        with self.assertRaisesRegex(ValueError, "contained only 3 work units"):
+            _validate_wesm_records(self.records)
+
+    def test_validation_accepts_complete_export_shape(self):
+        template = next(iter(self.records.values()))
+        records = {
+            f"workunit{index}": {**template, "workunit": f"WorkUnit_{index}"}
+            for index in range(MIN_WESM_RECORDS)
+        }
+        _validate_wesm_records(records)
 
 
 if __name__ == "__main__":

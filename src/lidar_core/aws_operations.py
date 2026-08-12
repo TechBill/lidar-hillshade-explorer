@@ -35,12 +35,25 @@ AWS_INDEX_URL = (
     "boundaries/resources.geojson"
 )
 WESM_URL = (
-    "https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/"
-    "metadata/WESM.csv"
+    "https://prd-tnm.s3.amazonaws.com/"
+    "StagedProducts/Elevation/metadata/WESM.csv"
 )
 
 CACHE_EXPIRY_DAYS = 30
 WESM_CACHE_EXPIRY_DAYS = 7
+MIN_WESM_RECORDS = 1000
+REQUIRED_WESM_FIELDS = {
+    "workunit",
+    "collect_start",
+    "collect_end",
+    "ql",
+    "dem_gsd_meters",
+    "horiz_crs",
+    "vert_crs",
+    "geoid",
+    "lpc_pub_date",
+    "metadata_link",
+}
 MIN_LAZ_SIZE = 2000  # Minimum LAZ file size in bytes
 MIN_POINTS_PER_SQ_MI = 100000  # Minimum point density
 
@@ -134,6 +147,21 @@ def _parse_wesm_csv(csv_text: str) -> Dict[str, Dict[str, str]]:
     return records
 
 
+def _validate_wesm_records(records: Dict[str, Dict[str, str]]) -> None:
+    """Reject malformed or suspiciously incomplete nationwide WESM exports."""
+    if len(records) < MIN_WESM_RECORDS:
+        raise ValueError(
+            f"USGS metadata file contained only {len(records):,} work units; "
+            f"expected at least {MIN_WESM_RECORDS:,}"
+        )
+
+    sample = next(iter(records.values()))
+    missing_fields = REQUIRED_WESM_FIELDS.difference(sample)
+    if missing_fields:
+        missing = ", ".join(sorted(missing_fields))
+        raise ValueError(f"USGS metadata file is missing required fields: {missing}")
+
+
 def ensure_wesm_metadata(log: LogFunc = None) -> Dict[str, Dict[str, str]]:
     """Return cached authoritative USGS work-unit metadata when available."""
     cache_path = get_cache_dir() / "WESM.csv"
@@ -150,6 +178,7 @@ def ensure_wesm_metadata(log: LogFunc = None) -> Dict[str, Dict[str, str]]:
         if cache_is_fresh:
             try:
                 records = _parse_wesm_csv(cache_path.read_text(encoding="utf-8-sig"))
+                _validate_wesm_records(records)
                 _log(log, f"Using cached USGS metadata (age: {age_days:.1f} days)")
                 return records
             except Exception as exc:
@@ -165,8 +194,7 @@ def ensure_wesm_metadata(log: LogFunc = None) -> Dict[str, Dict[str, str]]:
             csv_text = response.read().decode("utf-8-sig")
 
         records = _parse_wesm_csv(csv_text)
-        if not records:
-            raise ValueError("USGS metadata file contained no work units")
+        _validate_wesm_records(records)
 
         temp_path = cache_path.with_suffix(".csv.tmp")
         temp_path.write_text(csv_text, encoding="utf-8")
@@ -177,6 +205,7 @@ def ensure_wesm_metadata(log: LogFunc = None) -> Dict[str, Dict[str, str]]:
         if cache_path.is_file():
             try:
                 records = _parse_wesm_csv(cache_path.read_text(encoding="utf-8-sig"))
+                _validate_wesm_records(records)
                 _log(log, f"USGS metadata refresh failed ({exc}); using cached copy")
                 return records
             except Exception:

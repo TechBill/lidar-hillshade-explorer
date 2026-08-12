@@ -884,7 +884,7 @@ class HillshadeViewer:
             description_text = None
             dialog.destroy()
 
-        ttk.Button(btn_frame, text="OK", command=on_ok, width=12).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Export", command=on_ok, width=12).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Cancel", command=on_cancel, width=12).pack(side=tk.LEFT, padx=5)
 
         # Handle window close
@@ -1013,7 +1013,7 @@ class HillshadeViewer:
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(pady=(0, 0))
 
-        def on_download():
+        def on_export():
             nonlocal selected_path
             selected_path = Path(selected_var.get())
             if not selected_path.exists():
@@ -1036,23 +1036,26 @@ class HillshadeViewer:
 
             try:
                 shutil.copy2(selected_path, save_path)
-                messagebox.showinfo(
-                    "Export Complete",
-                    f"Hillshade saved to:\n{save_path}",
-                    parent=dialog
-                )
             except Exception as e:
                 messagebox.showerror(
                     "Export Failed",
                     f"Failed to export TIF:\n\n{e}",
                     parent=dialog
                 )
+                return
+
+            dialog.destroy()
+            messagebox.showinfo(
+                "Export Complete",
+                f"Hillshade saved to:\n{save_path}",
+                parent=self.window
+            )
 
         def on_close():
             dialog.destroy()
 
-        ttk.Button(btn_frame, text="Download", command=on_download, width=12).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Close", command=on_close, width=12).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Export", command=on_export, width=12).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Cancel", command=on_close, width=12).pack(side=tk.LEFT, padx=5)
 
         dialog.protocol("WM_DELETE_WINDOW", on_close)
         dialog.wait_window()
