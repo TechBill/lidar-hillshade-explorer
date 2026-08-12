@@ -87,3 +87,6 @@ config.json
 *.orig
 WESM.csv
 aws_resources.geojson
+
+# Ignore AI folders
+.claude/
