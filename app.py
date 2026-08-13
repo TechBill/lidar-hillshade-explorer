@@ -78,10 +78,24 @@ if not getattr(sys, 'frozen', False):
 from main_gui import HillshadeExplorerApp
 
 APP_VERSION = "3.2.4"
+WINDOWS_APP_ID = "com.techbill.lidar-hillshade-explorer"
 
 
 def main():
     """Launch the LiDAR Hillshade Explorer application"""
+    # Give Windows a stable application identity before creating any windows.
+    # Without this, the taskbar can group the app under Python and show the
+    # Python icon even though the executable has our icon embedded.
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                WINDOWS_APP_ID
+            )
+        except (AttributeError, OSError):
+            pass
+
     root = tk.Tk()
     root.title(f"LiDAR Hillshade Explorer {APP_VERSION}")
 
@@ -95,7 +109,16 @@ def main():
         else:
             icon_path = Path(__file__).parent / "assets" / "icon.ico"
 
-        if icon_path.exists():
+        if sys.platform == "win32":
+            png_path = icon_path.with_suffix(".png")
+            if png_path.exists():
+                # iconphoto preserves the PNG alpha channel and supplies the
+                # window/taskbar icon. Keep a reference for the Tk lifetime.
+                root._app_icon_image = tk.PhotoImage(file=str(png_path))
+                root.iconphoto(True, root._app_icon_image)
+            elif icon_path.exists():
+                root.iconbitmap(str(icon_path))
+        elif icon_path.exists():
             root.iconbitmap(str(icon_path))
     except Exception:
         pass  # Icon not critical

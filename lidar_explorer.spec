@@ -133,7 +133,7 @@ a = Analysis(
         'matplotlib.figure',
         'PIL._tkinter_finder',
         'rasterio',
-        'rasterio._shim',
+        'rasterio.serde',
         'rasterio._env',
         'rasterio._features',
         'rasterio._base',

@@ -61,7 +61,14 @@ class HillshadeViewer:
             else:
                 icon_path = Path(__file__).parent.parent / "assets" / "icon.ico"
 
-            if icon_path.exists():
+            if sys.platform == "win32":
+                png_path = icon_path.with_suffix(".png")
+                if png_path.exists():
+                    self._app_icon_image = tk.PhotoImage(file=str(png_path))
+                    self.window.iconphoto(True, self._app_icon_image)
+                elif icon_path.exists():
+                    self.window.iconbitmap(str(icon_path))
+            elif icon_path.exists():
                 self.window.iconbitmap(str(icon_path))
         except Exception:
             pass  # Icon not critical
