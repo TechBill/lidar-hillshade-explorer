@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -10,9 +11,12 @@ from lidar_core.aws_operations import (  # noqa: E402
     MIN_WESM_RECORDS,
     _dataset_sort_key,
     _enrich_dataset_properties,
+    _geometry_intersects_bbox,
     _parse_wesm_csv,
     _validate_wesm_records,
+    list_intersecting_datasets,
 )
+from processing import ProcessingOrchestrator  # noqa: E402
 from utils.config import (  # noqa: E402
     TERRAIN_STYLE_CONTINUOUS,
     TERRAIN_STYLE_CUSTOM,
@@ -26,6 +30,109 @@ MO_SouthernMO_1_D22,2023/03/15,2023/03/20,QL 2,1,NAD83(2011) / UTM zone 15N,NAVD
 MO_SE11County_1_B24,2024/03/17,2024/04/13,QL 1,0.5,NAD83(2011) / UTM zone 15N,NAVD88,GEOID18,2025/07/18,https://example.test/b24
 MO_FEMAR7_North_A1_2017,2017/01/01,2017/12/31,QL 2,1,NAD83 / UTM zone 15N,NAVD88,GEOID12B,2019/01/01,https://example.test/2017
 """
+
+
+def polygon_feature(name, coordinates):
+    """Build a minimal coverage-index feature for selection tests."""
+    return {
+        "type": "Feature",
+        "properties": {"name": name},
+        "geometry": {"type": "MultiPolygon", "coordinates": coordinates},
+    }
+
+
+class CoverageGeometryTests(unittest.TestCase):
+    def test_rejects_gap_inside_dataset_envelope(self):
+        # Two disjoint coverage islands have an envelope spanning the AOI, but
+        # neither real polygon touches it.
+        geometry = {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]],
+                [[[8, 0], [10, 0], [10, 2], [8, 2], [8, 0]]],
+            ],
+        }
+        self.assertFalse(_geometry_intersects_bbox(geometry, (4, 0.5, 6, 1.5)))
+
+    def test_detects_bbox_inside_polygon_and_boundary_crossing(self):
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]],
+        }
+        self.assertTrue(_geometry_intersects_bbox(geometry, (4, 4, 6, 6)))
+        self.assertTrue(_geometry_intersects_bbox(geometry, (9, 4, 11, 6)))
+
+    def test_rejects_bbox_fully_inside_polygon_hole(self):
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [
+                [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]],
+                [[3, 3], [7, 3], [7, 7], [3, 7], [3, 3]],
+            ],
+        }
+        self.assertFalse(_geometry_intersects_bbox(geometry, (4, 4, 6, 6)))
+
+    @patch("lidar_core.aws_operations.ensure_wesm_metadata", return_value={})
+    @patch("lidar_core.aws_operations.ensure_aws_index")
+    def test_selection_uses_real_coverage_not_envelope(
+        self, mock_index, _mock_wesm
+    ):
+        false_positive = polygon_feature(
+            "Newer_false_positive_2024",
+            [
+                [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]],
+                [[[8, 0], [10, 0], [10, 2], [8, 2], [8, 0]]],
+            ],
+        )
+        valid = polygon_feature(
+            "Older_valid_2017",
+            [[[[4, 0], [6, 0], [6, 2], [4, 2], [4, 0]]]],
+        )
+        mock_index.return_value = {"features": [false_positive, valid]}
+
+        datasets = list_intersecting_datasets((4.5, 0.5, 5.5, 1.5))
+
+        self.assertEqual([dataset["id"] for dataset in datasets], ["Older_valid_2017"])
+
+
+class SmartSelectionTests(unittest.TestCase):
+    def test_smart_selection_tries_every_available_dataset(self):
+        datasets = [
+            {"id": f"dataset_{rank}", "props": {}}
+            for rank in range(6)
+        ]
+        clip_results = [RuntimeError("empty point cloud") for _ in range(5)]
+        clip_results.append(
+            (Path("valid.laz"), {"id": "dataset_5"}, 3857)
+        )
+
+        with (
+            patch("processing.list_intersecting_datasets", return_value=datasets),
+            patch(
+                "processing.clip_aws_aoi_to_ground_laz",
+                side_effect=clip_results,
+            ) as mock_clip,
+            patch("processing.validate_laz_point_density", return_value=True),
+            patch(
+                "processing.run_tin_dem",
+                return_value=(Path("dem.tif"), 1.0, 1.0),
+            ),
+            patch(
+                "processing.generate_classic_hillshade",
+                return_value=Path("hillshade.tif"),
+            ),
+        ):
+            result = ProcessingOrchestrator().run_workflow(
+                lat=38.4249,
+                lon=-92.9362,
+                size_sqmi=0.25,
+                smart_select=True,
+                progress_callback=lambda *_args: None,
+                cancel_check=lambda: False,
+            )
+
+        self.assertEqual(mock_clip.call_count, 6)
+        self.assertEqual(result["metadata"]["dataset_id"], "dataset_5")
 
 
 class TerrainStyleTests(unittest.TestCase):

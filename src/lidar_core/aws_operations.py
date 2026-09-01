@@ -229,6 +229,170 @@ def _bbox_intersects(a: Tuple[float, float, float, float],
     return True
 
 
+def _point_in_bbox(
+    point: Tuple[float, float],
+    bbox: Tuple[float, float, float, float],
+) -> bool:
+    """Return whether a point is inside or on an axis-aligned bbox."""
+    x, y = point
+    minx, miny, maxx, maxy = bbox
+    return minx <= x <= maxx and miny <= y <= maxy
+
+
+def _orientation(
+    a: Tuple[float, float],
+    b: Tuple[float, float],
+    c: Tuple[float, float],
+) -> float:
+    """Return the signed orientation of three points."""
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+
+def _point_on_segment(
+    point: Tuple[float, float],
+    start: Tuple[float, float],
+    end: Tuple[float, float],
+) -> bool:
+    """Return whether a point lies on a closed line segment."""
+    epsilon = 1e-12
+    if abs(_orientation(start, end, point)) > epsilon:
+        return False
+    return (
+        min(start[0], end[0]) - epsilon <= point[0] <= max(start[0], end[0]) + epsilon
+        and min(start[1], end[1]) - epsilon <= point[1] <= max(start[1], end[1]) + epsilon
+    )
+
+
+def _segments_intersect(
+    a_start: Tuple[float, float],
+    a_end: Tuple[float, float],
+    b_start: Tuple[float, float],
+    b_end: Tuple[float, float],
+) -> bool:
+    """Return whether two closed line segments intersect."""
+    a1 = _orientation(a_start, a_end, b_start)
+    a2 = _orientation(a_start, a_end, b_end)
+    b1 = _orientation(b_start, b_end, a_start)
+    b2 = _orientation(b_start, b_end, a_end)
+
+    if ((a1 > 0 and a2 < 0) or (a1 < 0 and a2 > 0)) and (
+        (b1 > 0 and b2 < 0) or (b1 < 0 and b2 > 0)
+    ):
+        return True
+
+    return (
+        (abs(a1) <= 1e-12 and _point_on_segment(b_start, a_start, a_end))
+        or (abs(a2) <= 1e-12 and _point_on_segment(b_end, a_start, a_end))
+        or (abs(b1) <= 1e-12 and _point_on_segment(a_start, b_start, b_end))
+        or (abs(b2) <= 1e-12 and _point_on_segment(a_end, b_start, b_end))
+    )
+
+
+def _ring_points(ring: Any) -> List[Tuple[float, float]]:
+    """Return valid two-dimensional points from a GeoJSON linear ring."""
+    points: List[Tuple[float, float]] = []
+    if not isinstance(ring, (list, tuple)):
+        return points
+    for coordinate in ring:
+        if (
+            isinstance(coordinate, (list, tuple))
+            and len(coordinate) >= 2
+            and isinstance(coordinate[0], (int, float))
+            and isinstance(coordinate[1], (int, float))
+        ):
+            points.append((float(coordinate[0]), float(coordinate[1])))
+    return points
+
+
+def _point_in_ring(point: Tuple[float, float], ring: Any) -> bool:
+    """Return whether a point is inside or on a GeoJSON linear ring."""
+    points = _ring_points(ring)
+    if len(points) < 3:
+        return False
+
+    inside = False
+    previous = points[-1]
+    for current in points:
+        if _point_on_segment(point, previous, current):
+            return True
+        if (current[1] > point[1]) != (previous[1] > point[1]):
+            crossing_x = (
+                (previous[0] - current[0])
+                * (point[1] - current[1])
+                / (previous[1] - current[1])
+                + current[0]
+            )
+            if point[0] < crossing_x:
+                inside = not inside
+        previous = current
+    return inside
+
+
+def _ring_intersects_bbox(
+    ring: Any,
+    bbox: Tuple[float, float, float, float],
+) -> bool:
+    """Return whether a GeoJSON ring boundary intersects a bbox."""
+    points = _ring_points(ring)
+    if len(points) < 2:
+        return False
+    if any(_point_in_bbox(point, bbox) for point in points):
+        return True
+
+    minx, miny, maxx, maxy = bbox
+    corners = (
+        (minx, miny),
+        (maxx, miny),
+        (maxx, maxy),
+        (minx, maxy),
+    )
+    bbox_edges = tuple(zip(corners, corners[1:] + corners[:1]))
+    previous = points[-1]
+    for current in points:
+        if any(
+            _segments_intersect(previous, current, edge_start, edge_end)
+            for edge_start, edge_end in bbox_edges
+        ):
+            return True
+        previous = current
+    return False
+
+
+def _polygon_intersects_bbox(
+    polygon: Any,
+    bbox: Tuple[float, float, float, float],
+) -> bool:
+    """Return whether a GeoJSON polygon intersects a bbox, respecting holes."""
+    if not isinstance(polygon, (list, tuple)) or not polygon:
+        return False
+
+    outer_ring = polygon[0]
+    if _ring_intersects_bbox(outer_ring, bbox):
+        return True
+
+    minx, miny, maxx, maxy = bbox
+    for corner in ((minx, miny), (maxx, miny), (maxx, maxy), (minx, maxy)):
+        if _point_in_ring(corner, outer_ring) and not any(
+            _point_in_ring(corner, hole) for hole in polygon[1:]
+        ):
+            return True
+    return False
+
+
+def _geometry_intersects_bbox(
+    geom: Dict[str, Any],
+    bbox: Tuple[float, float, float, float],
+) -> bool:
+    """Return whether a GeoJSON Polygon or MultiPolygon intersects a bbox."""
+    geometry_type = geom.get("type")
+    coordinates = geom.get("coordinates")
+    if geometry_type == "Polygon":
+        return _polygon_intersects_bbox(coordinates, bbox)
+    if geometry_type == "MultiPolygon" and isinstance(coordinates, (list, tuple)):
+        return any(_polygon_intersects_bbox(polygon, bbox) for polygon in coordinates)
+    return False
+
+
 def _extract_dataset_id(props: Dict[str, Any]) -> Optional[str]:
     """Extract dataset ID from properties."""
     for key in ("id", "ID", "Id", "name", "Name", "title", "Title"):
@@ -466,6 +630,12 @@ def list_intersecting_datasets(
                 continue
 
         if not _bbox_intersects(aoi_bbox, fbbox):
+            continue
+
+        # Dataset footprints are often irregular multipolygons. Their broad
+        # rectangular envelopes can cover large gaps with no point-cloud data,
+        # so use the real geometry after the inexpensive bbox prefilter.
+        if not _geometry_intersects_bbox(geom, aoi_bbox):
             continue
 
         ds_id = _extract_dataset_id(props)

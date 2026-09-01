@@ -112,7 +112,20 @@ class ProcessingOrchestrator:
             epsg = None
 
             # Try datasets with smart selection fallback
-            max_attempts = 5 if smart_select else 1
+            available_datasets = list_intersecting_datasets(bbox4326=bbox, log=log)
+            if not available_datasets:
+                raise RuntimeError(
+                    "No USGS/AWS LiDAR datasets found for this location. "
+                    "Try a different area within the United States."
+                )
+            if dataset_rank >= len(available_datasets):
+                raise RuntimeError(
+                    f"Requested dataset rank {dataset_rank} but only "
+                    f"{len(available_datasets)} dataset(s) available."
+                )
+            max_attempts = (
+                len(available_datasets) - dataset_rank if smart_select else 1
+            )
 
             for attempt in range(max_attempts):
                 if cancel_check():
