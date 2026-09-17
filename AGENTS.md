@@ -89,6 +89,15 @@ The `"version": 1` key in `get_default_config()` in `src/utils/config.py` is
 an unrelated config-schema version, not the app version — don't touch it
 when bumping app version.
 
+## KMZ NoData rendering
+
+The Advanced Settings preference `preferences.opaque_kmz_nodata` is off by
+default. When enabled, KMZ export renders masked/NoData pixels as an opaque
+neutral gray chosen from the hillshade instead of alpha 0. This is a display
+operation only: never use this preference to overwrite DEM elevations, remove
+GeoTIFF NoData metadata, or synthesize underwater terrain. The source DEM and
+GeoTIFF must remain analytically unchanged.
+
 ## GDAL/PROJ/rasterio environment — this took three rounds to get right
 
 `src/utils/binary_paths.py` has two *different* environment-setup functions

@@ -22,7 +22,40 @@ def _log(log: LogFunc, msg: str) -> None:
         log(msg)
 
 
-def _tif_to_png_and_bounds(tif_path: Path, png_path: Path) -> dict:
+def _neutral_gray(gray, valid) -> int:
+    """Choose a visually compatible neutral shade from valid hillshade pixels."""
+    import numpy as np
+
+    valid_values = gray[valid]
+    if valid_values.size == 0:
+        return 180
+    return int(np.median(valid_values))
+
+
+def _hillshade_image(gray, valid, opaque_nodata: bool, nodata_gray: int | None = None):
+    """Create a lossless Pillow image, optionally rendering NoData as gray."""
+    import numpy as np
+    from PIL import Image
+
+    gray = np.asarray(gray, dtype=np.uint8)
+    valid = np.asarray(valid, dtype=bool)
+    if opaque_nodata:
+        rendered = gray.copy()
+        rendered[~valid] = (
+            _neutral_gray(gray, valid) if nodata_gray is None else nodata_gray
+        )
+        return Image.fromarray(rendered, mode="L").convert("RGB")
+
+    image = Image.fromarray(gray, mode="L").convert("RGBA")
+    image.putalpha(Image.fromarray((valid.astype(np.uint8) * 255), mode="L"))
+    return image
+
+
+def _tif_to_png_and_bounds(
+    tif_path: Path,
+    png_path: Path,
+    opaque_nodata: bool = False,
+) -> dict:
     """Render a GeoTIFF to PNG and return its WGS84 overlay bounds."""
     import numpy as np
     import rasterio
@@ -53,8 +86,7 @@ def _tif_to_png_and_bounds(tif_path: Path, png_path: Path) -> dict:
         else:
             gray = np.zeros(values.shape, dtype=np.uint8)
 
-        image = Image.fromarray(gray, mode="L").convert("RGBA")
-        image.putalpha(Image.fromarray((valid.astype(np.uint8) * 255), mode="L"))
+        image = _hillshade_image(gray, valid, opaque_nodata)
         image.save(png_path, format="PNG")
 
     return {
@@ -69,7 +101,8 @@ def tif_to_kmz(
     tif_path: Path,
     output_path: Path,
     description: str = "",
-    log: LogFunc = None
+    log: LogFunc = None,
+    opaque_nodata: bool = False,
 ) -> Path:
     """
     Convert GeoTIFF to KMZ format for Google Earth.
@@ -102,7 +135,9 @@ def tif_to_kmz(
         png_path = temp_path / (tif_path.stem + ".png")
         _log(log, f"Creating PNG...")
 
-        bounds = _tif_to_png_and_bounds(tif_path, png_path)
+        bounds = _tif_to_png_and_bounds(
+            tif_path, png_path, opaque_nodata=opaque_nodata
+        )
         _log(
             log,
             f"WGS84 extent: {bounds['south']:.6f},{bounds['west']:.6f} "
@@ -160,7 +195,8 @@ def tifs_to_kmz(
     description: str = "",
     document_name: str = "Hillshade Collection",
     log: LogFunc = None,
-    progress_callback: callable = None
+    progress_callback: callable = None,
+    opaque_nodata: bool = False,
 ) -> Path:
     """
     Convert multiple GeoTIFF files to a single KMZ with multiple layers.
@@ -224,7 +260,9 @@ def tifs_to_kmz(
             png_path = temp_path / f"{clean_name}.png"
 
             try:
-                bounds = _tif_to_png_and_bounds(tif_path, png_path)
+                bounds = _tif_to_png_and_bounds(
+                    tif_path, png_path, opaque_nodata=opaque_nodata
+                )
             except Exception as exc:
                 reason = str(exc).strip() or repr(exc)
                 # Always print, not just when a log callback is wired up -

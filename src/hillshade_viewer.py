@@ -1148,6 +1148,7 @@ class HillshadeViewer:
 
         def export_worker():
             from lidar_core.kmz_export import tifs_to_kmz
+            from utils.config import load_config
 
             def progress_callback(current, total):
                 # Update UI with progress
@@ -1172,13 +1173,20 @@ class HillshadeViewer:
                 doc_sqmi = meta.get('size_sqmi', 0)
                 document_name = f"{doc_lat:.4f}, {doc_lon:.4f} {doc_sqmi}sqmi"
 
-                # Export all files to single KMZ
+                export_config = load_config()
+                opaque_nodata = bool(
+                    export_config.get("preferences", {}).get(
+                        "opaque_kmz_nodata", False
+                    )
+                )
+                # Export all files to a single KMZ.
                 tifs_to_kmz(
                     selected_files,
                     Path(save_path),
                     description=description,
                     document_name=document_name,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
+                    opaque_nodata=opaque_nodata,
                 )
 
                 # Update to 100%

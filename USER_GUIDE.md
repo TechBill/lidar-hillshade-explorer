@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer – User Guide (v3.2.5)
+# LiDAR Hillshade Explorer – User Guide (v3.2.6)
 
 ## Overview
 **LiDAR Hillshade Explorer** is a lightweight desktop app for exploring terrain using LiDAR data.  
@@ -16,7 +16,7 @@ Because LiDAR Hillshade Explorer is distributed as a downloadable app (not from 
 
 ### macOS (Apple Silicon)
 
-Version 3.2.5 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
+Version 3.2.6 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
 Pro, iMac, Mac mini, Mac Studio, and Mac Pro systems. It runs natively on M1,
 M2, M3, M4, and newer Apple Silicon chips. Intel Macs require a separately
 built x86_64 version.
@@ -275,6 +275,14 @@ These values apply when the main-screen Terrain Style is set to **Custom**:
 
 Click **Reset to Defaults** to restore the original values.
 
+## Export Settings
+
+Enable **Fill KMZ NoData areas with opaque neutral gray** to stop satellite
+imagery from showing through water bodies and other areas with no reliable
+LiDAR ground returns. This affects KMZ rendering only;
+the source DEM and exported GeoTIFF retain their original NoData values. The
+option is disabled by default.
+
 ## Log Window
 
 Enable **Show Log Window** to open a real-time log of processing details. This is useful for:
@@ -352,7 +360,7 @@ Enable **Smart Selection** to automatically try older datasets that may have bet
 
 ## macOS Standalone Release
 
-The version 3.2.5 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
+The version 3.2.6 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
 Users do not need Homebrew, Python, QGIS, PDAL, or GDAL. Internet access is still
 required to locate and download USGS LiDAR data and periodically refresh USGS
 metadata.

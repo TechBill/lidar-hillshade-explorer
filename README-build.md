@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 3.2.5
+# LiDAR Hillshade Explorer 3.2.6
 
 A simplified desktop LiDAR hillshade application for non-technical users.
 
@@ -37,7 +37,7 @@ Development mode requires system-level tools (install via QGIS/Homebrew/etc.):
 - PDAL (LiDAR processing + DEM generation)
 - GDAL (hillshade generation and KMZ export)
 
-The standalone 3.2.5 release bundles these tools and does not require users to
+The standalone 3.2.6 release bundles these tools and does not require users to
 install Python, PDAL, GDAL, PROJ, Homebrew, or QGIS.
 
 ### Python Dependencies

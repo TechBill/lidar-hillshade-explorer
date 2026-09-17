@@ -1010,6 +1010,34 @@ class HillshadeExplorerApp:
             foreground="gray"
         ).pack(anchor=tk.W, pady=(5, 0))
 
+        # Export settings section
+        export_frame = ttk.LabelFrame(main_frame, text="Export Settings", padding=15)
+        export_frame.pack(fill=tk.X, pady=(0, 15))
+
+        opaque_kmz_nodata_var = tk.BooleanVar(
+            value=bool(
+                self.config.get("preferences", {}).get(
+                    "opaque_kmz_nodata", False
+                )
+            )
+        )
+        ttk.Checkbutton(
+            export_frame,
+            text="Fill KMZ NoData areas with opaque neutral gray",
+            variable=opaque_kmz_nodata_var,
+        ).pack(anchor=tk.W)
+        ttk.Label(
+            export_frame,
+            text=(
+                "Prevents satellite imagery from showing through water and other "
+                "areas without LiDAR ground returns. DEM and GeoTIFF data remain unchanged."
+            ),
+            font=("", 9),
+            foreground="gray",
+            wraplength=560,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(5, 0))
+
         # DEM fill settings section
         dem_frame = ttk.LabelFrame(main_frame, text="Custom Terrain Settings", padding=15)
         dem_frame.pack(fill=tk.X, pady=(0, 15))
@@ -1115,6 +1143,9 @@ class HillshadeExplorerApp:
             }
             self.config["dem_fill"] = dem_fill
             self.config["preferences"]["show_log"] = self.show_log_var.get()
+            self.config["preferences"]["opaque_kmz_nodata"] = bool(
+                opaque_kmz_nodata_var.get()
+            )
             save_config(self.config)
             return True
 

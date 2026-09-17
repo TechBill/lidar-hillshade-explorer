@@ -138,7 +138,8 @@ def get_default_config() -> dict[str, Any]:
         "preferences": {
             "smart_select": True,
             "show_log": False,
-            "terrain_style": TERRAIN_STYLE_CONTINUOUS
+            "terrain_style": TERRAIN_STYLE_CONTINUOUS,
+            "opaque_kmz_nodata": False
         },
         "ui": {
             "window_geometry": "500x550"
