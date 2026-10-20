@@ -13,6 +13,8 @@ from lidar_core.aws_operations import (  # noqa: E402
     _enrich_dataset_properties,
     _geometry_intersects_bbox,
     _parse_wesm_csv,
+    _product_workunit_key,
+    _products_cover_bbox,
     _validate_wesm_records,
     list_intersecting_datasets,
 )
@@ -25,10 +27,10 @@ from utils.config import (  # noqa: E402
 )
 
 
-WESM_SAMPLE = """workunit,collect_start,collect_end,ql,dem_gsd_meters,horiz_crs,vert_crs,geoid,lpc_pub_date,metadata_link
-MO_SouthernMO_1_D22,2023/03/15,2023/03/20,QL 2,1,NAD83(2011) / UTM zone 15N,NAVD88,GEOID18,2023/12/20,https://example.test/d22
-MO_SE11County_1_B24,2024/03/17,2024/04/13,QL 1,0.5,NAD83(2011) / UTM zone 15N,NAVD88,GEOID18,2025/07/18,https://example.test/b24
-MO_FEMAR7_North_A1_2017,2017/01/01,2017/12/31,QL 2,1,NAD83 / UTM zone 15N,NAVD88,GEOID12B,2019/01/01,https://example.test/2017
+WESM_SAMPLE = """workunit,collect_start,collect_end,ql,dem_gsd_meters,horiz_crs,vert_crs,geoid,lpc_pub_date,lpc_category,sourcedem_pub_date,sourcedem_category,lpc_link,sourcedem_link,metadata_link
+MO_SouthernMO_1_D22,2023/03/15,2023/03/20,QL 2,1,NAD83(2011) / UTM zone 15N,NAVD88,GEOID18,2023/12/20,Meets,2023/12/20,Meets,https://example.test/lpc/d22,https://example.test/dem/d22,https://example.test/d22
+MO_SE11County_1_B24,2024/03/17,2024/04/13,QL 1,0.5,NAD83(2011) / UTM zone 15N,NAVD88,GEOID18,2025/07/18,Meets,2025/07/18,Meets,https://example.test/lpc/b24,https://example.test/dem/b24,https://example.test/b24
+MO_FEMAR7_North_A1_2017,2017/01/01,2017/12/31,QL 2,1,NAD83 / UTM zone 15N,NAVD88,GEOID12B,2019/01/01,Meets,2019/01/01,Meets,https://example.test/lpc/2017,https://example.test/dem/2017,https://example.test/2017
 """
 
 
@@ -73,9 +75,10 @@ class CoverageGeometryTests(unittest.TestCase):
         self.assertFalse(_geometry_intersects_bbox(geometry, (4, 4, 6, 6)))
 
     @patch("lidar_core.aws_operations.ensure_wesm_metadata", return_value={})
+    @patch("lidar_core.aws_operations._query_tnm_products", return_value=[])
     @patch("lidar_core.aws_operations.ensure_aws_index")
     def test_selection_uses_real_coverage_not_envelope(
-        self, mock_index, _mock_wesm
+        self, mock_index, _mock_tnm, _mock_wesm
     ):
         false_positive = polygon_feature(
             "Newer_false_positive_2024",
@@ -93,6 +96,22 @@ class CoverageGeometryTests(unittest.TestCase):
         datasets = list_intersecting_datasets((4.5, 0.5, 5.5, 1.5))
 
         self.assertEqual([dataset["id"] for dataset in datasets], ["Older_valid_2017"])
+
+    def test_product_tiles_must_cover_complete_aoi(self):
+        def product(left, bottom, right, top):
+            return {
+                "boundingBox": {
+                    "minX": left,
+                    "minY": bottom,
+                    "maxX": right,
+                    "maxY": top,
+                }
+            }
+
+        complete = [product(0, 0, 1, 2), product(1, 0, 2, 2)]
+        gap = [product(0, 0, 0.9, 2), product(1.1, 0, 2, 2)]
+        self.assertTrue(_products_cover_bbox(complete, (0, 0, 2, 2)))
+        self.assertFalse(_products_cover_bbox(gap, (0, 0, 2, 2)))
 
 
 class SmartSelectionTests(unittest.TestCase):
@@ -133,6 +152,42 @@ class SmartSelectionTests(unittest.TestCase):
 
         self.assertEqual(mock_clip.call_count, 6)
         self.assertEqual(result["metadata"]["dataset_id"], "dataset_5")
+
+    def test_source_dem_skips_point_cloud_dem_generation(self):
+        candidate = {
+            "id": "source_workunit",
+            "props": {"id": "source_workunit", "source_type": "source_dem"},
+        }
+        with (
+            patch("processing.list_intersecting_datasets", return_value=[candidate]),
+            patch(
+                "processing.download_source_dem_for_aoi",
+                return_value=(
+                    Path("source_dem.tif"),
+                    candidate["props"],
+                    6342,
+                    0.25,
+                ),
+            ),
+            patch("processing.run_tin_dem") as mock_tin,
+            patch(
+                "processing.generate_classic_hillshade",
+                return_value=Path("hillshade.tif"),
+            ),
+        ):
+            result = ProcessingOrchestrator().run_workflow(
+                lat=43.8,
+                lon=-103.8,
+                size_sqmi=0.25,
+                smart_select=True,
+                progress_callback=lambda *_args: None,
+                cancel_check=lambda: False,
+            )
+
+        mock_tin.assert_not_called()
+        self.assertIsNone(result["laz"])
+        self.assertEqual(result["dem"], "source_dem.tif")
+        self.assertEqual(result["metadata"]["dem_resolution"], 0.25)
 
 
 class TerrainStyleTests(unittest.TestCase):
@@ -211,6 +266,41 @@ class WesmSelectionTests(unittest.TestCase):
             _dataset_sort_key("MO_SE11County_1_B24", newer),
             _dataset_sort_key("MO_SouthernMO_1_D22", older),
         )
+
+    def test_tnm_product_path_resolves_wesm_workunit(self):
+        product = {
+            "downloadURL": (
+                "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/OPR/"
+                "Projects/MO_Project/MO_SE11County_1_B24/TIFF/tile.tif"
+            )
+        }
+        self.assertEqual(
+            _product_workunit_key(product, self.records),
+            "mose11county1b24",
+        )
+
+    @patch("lidar_core.aws_operations._ept_candidates", return_value={})
+    @patch("lidar_core.aws_operations._query_tnm_products")
+    @patch("lidar_core.aws_operations.ensure_wesm_metadata")
+    def test_wesm_first_discovery_finds_non_ept_source_dem(
+        self, mock_wesm, mock_query, _mock_ept
+    ):
+        mock_wesm.return_value = self.records
+        source_product = {
+            "downloadURL": (
+                "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/OPR/"
+                "Projects/MO_Project/MO_SE11County_1_B24/TIFF/tile.tif"
+            ),
+            "boundingBox": {"minX": 0, "minY": 0, "maxX": 2, "maxY": 2},
+        }
+        mock_query.side_effect = [[source_product], []]
+
+        datasets = list_intersecting_datasets((0.5, 0.5, 1.5, 1.5))
+
+        self.assertEqual(len(datasets), 1)
+        self.assertEqual(datasets[0]["id"], "MO_SE11County_1_B24")
+        self.assertEqual(datasets[0]["props"]["source_type"], "source_dem")
+        self.assertTrue(datasets[0]["props"]["covers_aoi"])
 
     def test_validation_rejects_truncated_nationwide_export(self):
         with self.assertRaisesRegex(ValueError, "contained only 3 work units"):

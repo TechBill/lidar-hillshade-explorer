@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 3.2.6
+# LiDAR Hillshade Explorer 3.5
 
 A simplified desktop LiDAR hillshade application for non-technical users.
 
@@ -10,9 +10,9 @@ User enters coordinates, clicks one button, and the app automatically finds LiDA
 
 - **Simple Input**: Enter latitude/longitude and area size (0.25, 0.5, or 1.0 sq mi)
 - **Paste Coordinates**: One-click paste from clipboard (supports Google Maps, Google Earth KML, comma/space-separated)
-- **Automatic Discovery**: Finds and downloads LiDAR from AWS/USGS datasets
-- **Smart Selection**: Uses cached official USGS acquisition dates and quality
-  levels to rank datasets, then tries older collections if coverage is insufficient
+- **Automatic Discovery**: Finds work units through official USGS WESM/TNM data
+- **Smart Selection**: Best Detail or Newest Survey ranking with automatic
+  EPT, source-DEM, and official-LAZ delivery fallbacks
 - **Terrain Styles**: Continuous Terrain, Preserve Large Gaps, and Custom TIN settings
 - **Auto-Resolution DEM**: Analyzes point spacing and selects optimal DEM resolution
 - **Interactive Viewer**: Pillow-based viewer with smooth zoom/pan controls
@@ -37,7 +37,7 @@ Development mode requires system-level tools (install via QGIS/Homebrew/etc.):
 - PDAL (LiDAR processing + DEM generation)
 - GDAL (hillshade generation and KMZ export)
 
-The standalone 3.2.6 release bundles these tools and does not require users to
+The standalone 3.5 release bundles these tools and does not require users to
 install Python, PDAL, GDAL, PROJ, Homebrew, or QGIS.
 
 ### Python Dependencies
@@ -60,7 +60,7 @@ python app.py
    - Type coordinates manually OR
    - Click "Paste Coordinates" to paste from clipboard
 2. Select area size (Small/Medium/Large)
-3. Enable/disable smart selection
+3. Choose Best Detail or Newest Survey and enable/disable smart fallback
 4. Click "Generate Hillshade"
 5. Wait for processing (2-10 minutes)
 6. View and style hillshade in built-in viewer
@@ -168,10 +168,11 @@ Install PDAL (QGIS/conda/Homebrew), or set `PDAL_BIN` environment variable.
 Install QGIS which includes GDAL, or set `GDALDEM_BIN` environment variable.
 
 ### No LiDAR Coverage
-Try a different location within the United States. The app uses USGS/AWS LiDAR datasets which primarily cover the US.
+Try a different location within the United States. The app uses official USGS
+WESM/TNM products and AWS EPT delivery, which primarily cover the US.
 
 ### Low Point Density
-Enable "Smart Selection" to automatically try older datasets with better coverage.
+Enable "Smart Selection" to automatically try the next-ranked work unit.
 
 ## Credits
 

@@ -14,10 +14,13 @@ import json
 import math
 import re
 import subprocess
+import tempfile
 import time
 import ssl
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Callable, Dict, List, Tuple, Optional
+from urllib.parse import unquote, urlencode, urlparse
+from urllib.request import Request
 from urllib.request import urlopen
 
 try:
@@ -38,6 +41,9 @@ WESM_URL = (
     "https://prd-tnm.s3.amazonaws.com/"
     "StagedProducts/Elevation/metadata/WESM.csv"
 )
+TNM_PRODUCTS_URL = "https://tnmaccess.nationalmap.gov/api/v1/products"
+TNM_OPR_DATASET = "Original Product Resolution (OPR) Digital Elevation Model (DEM)"
+TNM_LPC_DATASET = "Lidar Point Cloud (LPC)"
 
 CACHE_EXPIRY_DAYS = 30
 WESM_CACHE_EXPIRY_DAYS = 7
@@ -52,6 +58,11 @@ REQUIRED_WESM_FIELDS = {
     "vert_crs",
     "geoid",
     "lpc_pub_date",
+    "lpc_category",
+    "sourcedem_pub_date",
+    "sourcedem_category",
+    "lpc_link",
+    "sourcedem_link",
     "metadata_link",
 }
 MIN_LAZ_SIZE = 2000  # Minimum LAZ file size in bytes
@@ -458,6 +469,15 @@ def _enrich_dataset_properties(
                 "vertical_crs": record.get("vert_crs") or None,
                 "geoid": record.get("geoid") or None,
                 "lpc_publication_date": (record.get("lpc_pub_date") or "").replace("/", "-") or None,
+                "lpc_update_date": (record.get("lpc_update") or "").replace("/", "-") or None,
+                "lpc_category": record.get("lpc_category") or None,
+                "lpc_reason": record.get("lpc_reason") or None,
+                "source_dem_publication_date": (record.get("sourcedem_pub_date") or "").replace("/", "-") or None,
+                "source_dem_update_date": (record.get("sourcedem_update") or "").replace("/", "-") or None,
+                "source_dem_category": record.get("sourcedem_category") or None,
+                "source_dem_reason": record.get("sourcedem_reason") or None,
+                "lpc_link": record.get("lpc_link") or None,
+                "source_dem_link": record.get("sourcedem_link") or None,
                 "metadata_link": record.get("metadata_link") or None,
                 "year_estimated": False,
                 "metadata_source": "USGS WESM",
@@ -477,8 +497,34 @@ def _enrich_dataset_properties(
     return enriched
 
 
-def _dataset_sort_key(dataset_id: str, props: Dict[str, Any]) -> tuple[int, int, str]:
-    """Sort by actual collection end date, then quality, then stable ID."""
+def _date_value(value: Any) -> int:
+    """Convert an ISO-like date into a sortable YYYYMMDD integer."""
+    digits = re.sub(r"[^0-9]", "", str(value or ""))[:8]
+    return int(digits.ljust(8, "0")) if digits else 0
+
+
+def _validation_score(props: Dict[str, Any]) -> int:
+    """Rank the validation category for the candidate's selected product."""
+    source_type = props.get("source_type")
+    if source_type == "source_dem":
+        category = props.get("source_dem_category")
+    else:
+        category = props.get("lpc_category")
+    normalized = str(category or "").strip().lower()
+    return {
+        "meets": 4,
+        "meets with variance": 3,
+        "expected to meet": 2,
+        "under review": 1,
+    }.get(normalized, 0)
+
+
+def _dataset_sort_key(
+    dataset_id: str,
+    props: Dict[str, Any],
+    ranking_mode: str = "best_detail",
+) -> tuple:
+    """Return a stable Best Detail or Newest Survey ranking key."""
     date_text = str(props.get("collection_end") or "").replace("-", "")
     if len(date_text) == 8 and date_text.isdigit():
         date_value = int(date_text)
@@ -487,7 +533,37 @@ def _dataset_sort_key(dataset_id: str, props: Dict[str, Any]) -> tuple[int, int,
         date_value = int(year) * 10000 if isinstance(year, int) else 19000000
     quality = props.get("quality_level")
     quality_score = -int(quality) if isinstance(quality, int) else -999
-    return (date_value, quality_score, dataset_id)
+    try:
+        resolution_score = -float(props.get("dem_gsd_meters"))
+    except (TypeError, ValueError):
+        resolution_score = -999.0
+    updated = max(
+        _date_value(props.get("source_dem_update_date")),
+        _date_value(props.get("lpc_update_date")),
+        _date_value(props.get("source_dem_publication_date")),
+        _date_value(props.get("lpc_publication_date")),
+    )
+    validation = _validation_score(props)
+    coverage = 1 if props.get("covers_aoi", False) else 0
+    if ranking_mode == "newest":
+        return (
+            coverage,
+            date_value,
+            quality_score,
+            resolution_score,
+            validation,
+            updated,
+            dataset_id,
+        )
+    return (
+        coverage,
+        validation,
+        resolution_score,
+        quality_score,
+        date_value,
+        updated,
+        dataset_id,
+    )
 
 
 def _extract_year(props: Dict[str, Any]) -> float:
@@ -591,12 +667,235 @@ def _get_ept_srs_epsg(ept_url: str) -> int:
     return 3857
 
 
+def _query_tnm_products(
+    dataset: str,
+    bbox4326: Tuple[float, float, float, float],
+    log: LogFunc = None,
+) -> List[Dict[str, Any]]:
+    """Query official TNM products intersecting an AOI, following pagination."""
+    bbox_text = ",".join(f"{float(value):.10f}" for value in bbox4326)
+    products: List[Dict[str, Any]] = []
+    offset = 0
+    page_size = 1000
+
+    while True:
+        query = urlencode(
+            {
+                "bbox": bbox_text,
+                "datasets": dataset,
+                "max": page_size,
+                "offset": offset,
+            }
+        )
+        request = Request(
+            f"{TNM_PRODUCTS_URL}?{query}",
+            headers={"User-Agent": "LiDAR-Hillshade-Explorer/3.2"},
+        )
+        if HAS_CERTIFI:
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+        else:
+            ssl_context = ssl.create_default_context()
+        with urlopen(request, timeout=45, context=ssl_context) as response:
+            payload = json.load(response)
+
+        errors = payload.get("errors") or []
+        if errors:
+            raise RuntimeError("; ".join(str(error) for error in errors))
+        page = payload.get("items") or []
+        products.extend(item for item in page if isinstance(item, dict))
+        total = int(payload.get("total") or len(products))
+        if len(products) >= total or not page:
+            break
+        if len(products) >= 5000:
+            raise RuntimeError(
+                "The requested area intersects more than 5,000 USGS product tiles; "
+                "choose a smaller area."
+            )
+        offset += len(page)
+
+    _log(log, f"USGS TNM returned {len(products):,} {dataset} tile(s)")
+    return products
+
+
+def _product_download_url(product: Dict[str, Any]) -> Optional[str]:
+    """Return the preferred HTTPS URL from a TNM product record."""
+    candidates = [product.get("downloadLazURL"), product.get("downloadURL")]
+    urls = product.get("urls")
+    if isinstance(urls, dict):
+        candidates.extend(urls.values())
+    for value in candidates:
+        if isinstance(value, str) and value.startswith("https://"):
+            return value
+    return None
+
+
+def _product_workunit_key(
+    product: Dict[str, Any],
+    wesm_records: Dict[str, Dict[str, str]],
+) -> Optional[str]:
+    """Resolve a TNM tile to its WESM work unit using official product paths."""
+    sources = [
+        _product_download_url(product),
+        product.get("vendorMetaUrl"),
+        product.get("previewGraphicURL"),
+    ]
+    for source in sources:
+        if not isinstance(source, str):
+            continue
+        parts = [unquote(part) for part in urlparse(source).path.split("/") if part]
+        for marker in ("LAZ", "LAS", "TIFF", "IMG", "browse"):
+            if marker in parts:
+                index = parts.index(marker)
+                if index > 0:
+                    key = _normalize_dataset_name(parts[index - 1])
+                    if key:
+                        return key
+
+    searchable = " ".join(
+        str(product.get(key) or "")
+        for key in ("title", "vendorMetaUrl", "downloadURL", "downloadLazURL")
+    ).lower()
+    matches = [key for key in wesm_records if key and key in _normalize_dataset_name(searchable)]
+    return max(matches, key=len) if matches else None
+
+
+def _product_bbox(product: Dict[str, Any]) -> Optional[Tuple[float, float, float, float]]:
+    bounds = product.get("boundingBox")
+    if not isinstance(bounds, dict):
+        return None
+    try:
+        return (
+            float(bounds["minX"]),
+            float(bounds["minY"]),
+            float(bounds["maxX"]),
+            float(bounds["maxY"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _products_cover_bbox(
+    products: List[Dict[str, Any]],
+    bbox: Tuple[float, float, float, float],
+) -> bool:
+    """Return whether the union of TNM tile extents covers the entire AOI."""
+    minx, miny, maxx, maxy = bbox
+    rectangles = []
+    x_breaks = {minx, maxx}
+    for product in products:
+        bounds = _product_bbox(product)
+        if not bounds:
+            continue
+        left = max(minx, bounds[0])
+        bottom = max(miny, bounds[1])
+        right = min(maxx, bounds[2])
+        top = min(maxy, bounds[3])
+        if left < right and bottom < top:
+            rectangles.append((left, bottom, right, top))
+            x_breaks.update((left, right))
+    if not rectangles:
+        return False
+
+    xs = sorted(x_breaks)
+    epsilon = 1e-10
+    for left, right in zip(xs, xs[1:]):
+        if right - left <= epsilon:
+            continue
+        middle = (left + right) / 2
+        intervals = sorted(
+            (bottom, top)
+            for rect_left, bottom, rect_right, top in rectangles
+            if rect_left - epsilon <= middle <= rect_right + epsilon
+        )
+        covered_to = miny
+        for bottom, top in intervals:
+            if bottom > covered_to + epsilon:
+                break
+            covered_to = max(covered_to, top)
+            if covered_to >= maxy - epsilon:
+                break
+        if covered_to < maxy - epsilon:
+            return False
+    return True
+
+
+def _geometry_covers_bbox(
+    geom: Dict[str, Any], bbox: Tuple[float, float, float, float]
+) -> bool:
+    """Conservatively sample an EPT footprint for full AOI coverage."""
+    polygons = []
+    if geom.get("type") == "Polygon":
+        polygons = [geom.get("coordinates")]
+    elif geom.get("type") == "MultiPolygon":
+        polygons = geom.get("coordinates") or []
+    if not polygons:
+        return False
+
+    minx, miny, maxx, maxy = bbox
+    for x_index in range(7):
+        x = minx + (maxx - minx) * x_index / 6
+        for y_index in range(7):
+            y = miny + (maxy - miny) * y_index / 6
+            if not any(
+                polygon
+                and _point_in_ring((x, y), polygon[0])
+                and not any(_point_in_ring((x, y), hole) for hole in polygon[1:])
+                for polygon in polygons
+            ):
+                return False
+    return True
+
+
+def _ept_candidates(
+    bbox4326: Tuple[float, float, float, float],
+    wesm_records: Dict[str, Dict[str, str]],
+    log: LogFunc = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Return intersecting HoBu EPT entries keyed by WESM work unit."""
+    index = ensure_aws_index(log=log)
+    candidates: Dict[str, Dict[str, Any]] = {}
+    for feature in index.get("features", []):
+        geom = feature.get("geometry") or {}
+        props = feature.get("properties") or {}
+        try:
+            feature_bbox = feature.get("bbox") or _bbox_from_geometry(geom)
+            feature_bbox = tuple(float(value) for value in feature_bbox[:4])
+        except Exception:
+            continue
+        if not _bbox_intersects(bbox4326, feature_bbox):
+            continue
+        if not _geometry_intersects_bbox(geom, bbox4326):
+            continue
+        dataset_id = _extract_dataset_id(props)
+        if not dataset_id:
+            continue
+        record = _metadata_for_dataset(dataset_id, wesm_records)
+        workunit = (record or {}).get("workunit") or dataset_id
+        key = _normalize_dataset_name(workunit)
+        enriched = _enrich_dataset_properties(dataset_id, props, wesm_records)
+        enriched.update(
+            {
+                "id": workunit,
+                "ept_dataset_id": dataset_id,
+                "ept_url": (
+                    "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/"
+                    f"{dataset_id}/ept.json"
+                ),
+                "source_type": "ept",
+                "covers_aoi": _geometry_covers_bbox(geom, bbox4326),
+            }
+        )
+        candidates[key] = {"id": workunit, "props": enriched}
+    return candidates
+
+
 def list_intersecting_datasets(
     bbox4326: Tuple[float, float, float, float],
-    log: LogFunc = None
+    log: LogFunc = None,
+    ranking_mode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Return all AWS/USGS LiDAR datasets that intersect the bbox, sorted by ID.
+    Return WESM work units with official products intersecting the requested AOI.
 
     Args:
         bbox4326: Bounding box (lon_min, lat_min, lon_max, lat_max) in EPSG:4326
@@ -605,59 +904,89 @@ def list_intersecting_datasets(
     Returns:
         List of dicts with keys: id, props
     """
-    index = ensure_aws_index(log=log)
-    features: List[Dict[str, Any]] = index.get("features", [])
-
-    candidates: List[Tuple[str, Dict[str, Any]]] = []
     wesm_records = ensure_wesm_metadata(log=log)
-
     lon_min, lat_min, lon_max, lat_max = bbox4326
     aoi_bbox = (float(lon_min), float(lat_min), float(lon_max), float(lat_max))
+    candidates: Dict[str, Dict[str, Any]] = {}
 
-    for feat in features:
-        geom = feat.get("geometry") or {}
-        props = feat.get("properties") or {}
-
-        # Get feature bbox
-        fbbox_raw = feat.get("bbox")
-        if isinstance(fbbox_raw, (list, tuple)) and len(fbbox_raw) >= 4:
-            f_minx, f_miny, f_maxx, f_maxy = fbbox_raw[:4]
-            fbbox = (float(f_minx), float(f_miny), float(f_maxx), float(f_maxy))
-        else:
-            try:
-                fbbox = _bbox_from_geometry(geom)
-            except Exception:
+    product_groups: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+    for dataset, field_name in (
+        (TNM_OPR_DATASET, "source_dem_products"),
+        (TNM_LPC_DATASET, "lpc_products"),
+    ):
+        try:
+            products = _query_tnm_products(dataset, aoi_bbox, log=log)
+        except Exception as exc:
+            _log(log, f"USGS TNM {dataset} query failed ({exc})")
+            products = []
+        for product in products:
+            key = _product_workunit_key(product, wesm_records)
+            if not key:
                 continue
+            product_groups.setdefault(key, {}).setdefault(field_name, []).append(product)
 
-        if not _bbox_intersects(aoi_bbox, fbbox):
-            continue
+    for key, grouped in product_groups.items():
+        record = wesm_records.get(key) or {}
+        workunit = record.get("workunit") or key
+        props = _enrich_dataset_properties(workunit, {"name": workunit}, wesm_records)
+        source_products = grouped.get("source_dem_products", [])
+        lpc_products = grouped.get("lpc_products", [])
+        props.update(grouped)
+        props.update(
+            {
+                "id": workunit,
+                "source_type": "source_dem" if source_products else "lpc",
+                "covers_aoi": _products_cover_bbox(
+                    source_products or lpc_products, aoi_bbox
+                ),
+            }
+        )
+        candidates[key] = {"id": workunit, "props": props}
 
-        # Dataset footprints are often irregular multipolygons. Their broad
-        # rectangular envelopes can cover large gaps with no point-cloud data,
-        # so use the real geometry after the inexpensive bbox prefilter.
-        if not _geometry_intersects_bbox(geom, aoi_bbox):
-            continue
-
-        ds_id = _extract_dataset_id(props)
-        if not ds_id:
-            continue
-
-        enriched_props = _enrich_dataset_properties(ds_id, props, wesm_records)
-        candidates.append((ds_id, enriched_props))
+    try:
+        ept = _ept_candidates(aoi_bbox, wesm_records, log=log)
+    except Exception as exc:
+        _log(log, f"AWS EPT index unavailable ({exc})")
+        ept = {}
+    for key, ept_candidate in ept.items():
+        if key in candidates:
+            existing = candidates[key]["props"]
+            ept_props = ept_candidate["props"]
+            existing.update(
+                {
+                    "ept_dataset_id": ept_props.get("ept_dataset_id"),
+                    "ept_url": ept_props.get("ept_url"),
+                    "source_type": "ept",
+                    "covers_aoi": bool(existing.get("covers_aoi"))
+                    or bool(ept_props.get("covers_aoi")),
+                }
+            )
+        else:
+            candidates[key] = ept_candidate
 
     if not candidates:
         return []
 
-    # Prefer authoritative acquisition date. Quality level is a tie-breaker
-    # because a lower QL number represents denser/higher-quality lidar.
-    candidates.sort(
-        key=lambda item: _dataset_sort_key(item[0], item[1]), reverse=True
-    )
+    if ranking_mode is None:
+        ranking_mode = str(
+            load_config().get("preferences", {}).get("dataset_ranking", "best_detail")
+        )
+    if ranking_mode not in {"best_detail", "newest"}:
+        ranking_mode = "best_detail"
 
-    return [
-        {"id": ds_id, "props": dict(props)}
-        for ds_id, props in candidates
-    ]
+    result = list(candidates.values())
+    result.sort(
+        key=lambda item: _dataset_sort_key(
+            item["id"], item["props"], ranking_mode=ranking_mode
+        ),
+        reverse=True,
+    )
+    _log(
+        log,
+        f"WESM-first discovery found {len(result)} work unit(s); "
+        f"ranking mode: {'Best Detail' if ranking_mode == 'best_detail' else 'Newest Survey'}",
+    )
+    return result
 
 
 def select_dataset_for_bbox(
@@ -666,15 +995,16 @@ def select_dataset_for_bbox(
     log: LogFunc = None
 ) -> Tuple[str, int, Dict[str, Any]]:
     """
-    Select the Nth-newest intersecting dataset for the AOI.
+    Select the Nth-ranked WESM work unit for the AOI.
 
     Args:
         bbox4326: Bounding box (lon_min, lat_min, lon_max, lat_max) in EPSG:4326
-        rank: 0=newest, 1=second-newest, etc.
+        rank: Zero-based index in the configured dataset ranking
         log: Optional logging function
 
     Returns:
-        (ept_url, epsg_code, dataset_properties)
+        (delivery_url, epsg_code, dataset_properties). The EPSG code is zero
+        for official tile downloads and is read from the downloaded data.
 
     Raises:
         RuntimeError if no datasets intersect or rank out of range
@@ -686,7 +1016,7 @@ def select_dataset_for_bbox(
 
     if not candidates:
         raise RuntimeError(
-            "No USGS/AWS LiDAR datasets found for this location. "
+            "No USGS LiDAR datasets found for this location. "
             "Try a different area within the United States."
         )
 
@@ -698,23 +1028,24 @@ def select_dataset_for_bbox(
 
     chosen = candidates[rank]
     best_id = chosen["id"]
-    best_props = chosen["props"]
+    best_props = dict(chosen["props"])
+    source_type = best_props.get("source_type")
+    if source_type == "ept":
+        delivery_url = str(best_props["ept_url"])
+        epsg = _get_ept_srs_epsg(delivery_url)
+    else:
+        products = best_props.get(
+            "source_dem_products" if source_type == "source_dem" else "lpc_products",
+            [],
+        )
+        delivery_url = _product_download_url(products[0]) if products else None
+        epsg = 0
+    if not delivery_url:
+        raise RuntimeError(f"Selected work unit has no usable download URL: {best_id}")
 
-    # Build EPT URL
-    ept_url = (
-        f"https://s3-us-west-2.amazonaws.com/usgs-lidar-public/{best_id}/ept.json"
-    )
-
-    # Get EPSG from EPT
-    epsg = _get_ept_srs_epsg(ept_url)
-
-    best_props = dict(best_props)
-    best_props["index_id"] = best_props.get("id")
     best_props["id"] = best_id
-
-    _log(log, f"Selected dataset: {best_id}")
-    _log(log, f"EPT URL: {ept_url}")
-    _log(log, f"EPSG: {epsg}")
+    _log(log, f"Selected work unit: {best_id}")
+    _log(log, f"Delivery: {source_type}")
     if best_props.get("collection_year"):
         suffix = " (estimated)" if best_props.get("year_estimated") else ""
         details = f"Collected: {best_props['collection_year']}{suffix}"
@@ -722,7 +1053,7 @@ def select_dataset_for_bbox(
             details += f", QL{best_props['quality_level']}"
         _log(log, details)
 
-    return ept_url, epsg, best_props
+    return delivery_url, epsg, best_props
 
 
 # ============================================================================
@@ -822,6 +1153,7 @@ def clip_aws_aoi_to_ground_laz(
     center_lon: float,
     square_miles: float,
     dataset_rank: int = 0,
+    dataset: Optional[Dict[str, Any]] = None,
     log: LogFunc = None,
     cancel_check: Optional[Callable[[], bool]] = None
 ) -> Tuple[Path, Dict[str, Any], int]:
@@ -833,7 +1165,7 @@ def clip_aws_aoi_to_ground_laz(
         center_lat: AOI center latitude
         center_lon: AOI center longitude
         square_miles: AOI size in square miles
-        dataset_rank: 0=newest, 1=second-newest, etc.
+        dataset_rank: Zero-based index in the configured dataset ranking
         log: Optional logging function
         cancel_check: Optional function that returns True if cancelled
 
@@ -853,12 +1185,19 @@ def clip_aws_aoi_to_ground_laz(
 
     lon_min, lat_min, lon_max, lat_max = bbox4326
 
-    # Select dataset
-    ept_url, epsg_code, ds_props = select_dataset_for_bbox(
-        bbox4326=bbox4326,
-        rank=dataset_rank,
-        log=log
-    )
+    # Select dataset unless the WESM-first discovery result was already supplied.
+    if dataset is None:
+        ept_url, epsg_code, ds_props = select_dataset_for_bbox(
+            bbox4326=bbox4326,
+            rank=dataset_rank,
+            log=log,
+        )
+    else:
+        ds_props = dict(dataset.get("props") or {})
+        ept_url = ds_props.get("ept_url")
+        epsg_code = _get_ept_srs_epsg(ept_url) if ept_url else 0
+    if ds_props.get("source_type") != "ept" or not ept_url:
+        raise RuntimeError("Selected work unit is not available through AWS EPT")
 
     ds_id = ds_props.get("id") or "unknown"
 
@@ -997,6 +1336,279 @@ def clip_aws_aoi_to_ground_laz(
         )
 
     return clipped_laz, ds_props, epsg_code
+
+
+def _download_product_file(
+    product: Dict[str, Any],
+    destination: Path,
+    log: LogFunc = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> Path:
+    """Download one official TNM product with cancellation and URL validation."""
+    url = _product_download_url(product)
+    if not url:
+        raise RuntimeError("USGS product record has no HTTPS download URL")
+    host = (urlparse(url).hostname or "").lower()
+    allowed_hosts = {
+        "prd-tnm.s3.amazonaws.com",
+        "rockyweb.usgs.gov",
+    }
+    if host not in allowed_hosts:
+        raise RuntimeError(f"Unexpected USGS product host: {host or 'missing'}")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    request = Request(url, headers={"User-Agent": "LiDAR-Hillshade-Explorer/3.2"})
+    if HAS_CERTIFI:
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+    else:
+        ssl_context = ssl.create_default_context()
+
+    expected = int(product.get("sizeInBytes") or 0)
+    _log(
+        log,
+        f"Downloading {destination.name}"
+        + (f" ({expected / 1_000_000:.1f} MB)" if expected else ""),
+    )
+    downloaded = 0
+    try:
+        with urlopen(request, timeout=60, context=ssl_context) as response:
+            with destination.open("wb") as output:
+                while True:
+                    if cancel_check and cancel_check():
+                        raise RuntimeError("Cancelled by user")
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+                    downloaded += len(chunk)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+    if expected and downloaded < max(1024, int(expected * 0.95)):
+        destination.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"Incomplete USGS download for {destination.name}: "
+            f"received {downloaded:,} of {expected:,} bytes"
+        )
+    return destination
+
+
+def _output_basename(center_lat: float, center_lon: float, square_miles: float) -> str:
+    sqmi = f"{square_miles:.2f}".rstrip("0").rstrip(".")
+    return f"{float(center_lat):.4f}_{float(center_lon):.4f}_{sqmi}sqmi"
+
+
+def download_source_dem_for_aoi(
+    dataset: Dict[str, Any],
+    bbox4326: Tuple[float, float, float, float],
+    center_lat: float,
+    center_lon: float,
+    square_miles: float,
+    log: LogFunc = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> Tuple[Path, Dict[str, Any], int, float]:
+    """Download official OPR tiles and crop/mosaic them to the requested AOI."""
+    import numpy as np
+    import rasterio
+    from rasterio.merge import merge
+    from rasterio.warp import transform_bounds
+
+    props = dict(dataset.get("props") or {})
+    products = props.get("source_dem_products") or []
+    if not products:
+        raise RuntimeError("Selected WESM work unit has no source DEM tiles")
+
+    dem_dir = get_output_dir() / "dem"
+    dem_dir.mkdir(parents=True, exist_ok=True)
+    dem_path = dem_dir / f"{_output_basename(center_lat, center_lon, square_miles)}.tif"
+
+    _log(log, "=== Downloading official USGS source DEM ===")
+    _log(log, f"Work unit: {props.get('workunit') or dataset.get('id')}")
+    with tempfile.TemporaryDirectory(prefix="source_dem_", dir=dem_dir) as temp_dir:
+        tile_paths = []
+        for index, product in enumerate(products):
+            url = _product_download_url(product) or ""
+            filename = Path(unquote(urlparse(url).path)).name or f"tile_{index}.tif"
+            tile_paths.append(
+                _download_product_file(
+                    product,
+                    Path(temp_dir) / filename,
+                    log=log,
+                    cancel_check=cancel_check,
+                )
+            )
+
+        sources = [rasterio.open(path) for path in tile_paths]
+        try:
+            source_crs = sources[0].crs
+            if source_crs is None:
+                raise RuntimeError("USGS source DEM tile has no coordinate system")
+            if any(source.crs != source_crs for source in sources[1:]):
+                raise RuntimeError("USGS source DEM tiles use inconsistent coordinate systems")
+            projected_bounds = transform_bounds(
+                "EPSG:4326", source_crs, *bbox4326, densify_pts=21
+            )
+            nodata = sources[0].nodata
+            if nodata is None:
+                nodata = -9999.0
+            mosaic, transform = merge(
+                sources,
+                bounds=projected_bounds,
+                nodata=nodata,
+                dtype="float32",
+            )
+            if cancel_check and cancel_check():
+                raise RuntimeError("Cancelled by user")
+            valid = np.isfinite(mosaic[0]) & (mosaic[0] != nodata)
+            if not np.any(valid):
+                raise RuntimeError("Official source DEM contains no data in the requested area")
+            profile = sources[0].profile.copy()
+            profile.update(
+                driver="GTiff",
+                width=mosaic.shape[2],
+                height=mosaic.shape[1],
+                count=1,
+                dtype="float32",
+                crs=source_crs,
+                transform=transform,
+                nodata=nodata,
+                compress="LZW",
+                tiled=True,
+            )
+            with rasterio.open(dem_path, "w", **profile) as output:
+                output.write(mosaic[0].astype("float32"), 1)
+            resolution = (abs(float(transform.a)) + abs(float(transform.e))) / 2.0
+            epsg = source_crs.to_epsg() or 0
+        finally:
+            for source in sources:
+                source.close()
+
+    _log(log, f"Source DEM ready: {dem_path.name} ({resolution:g} m)")
+    return dem_path, props, int(epsg), resolution
+
+
+def download_lpc_for_aoi(
+    dataset: Dict[str, Any],
+    bbox4326: Tuple[float, float, float, float],
+    center_lat: float,
+    center_lon: float,
+    square_miles: float,
+    log: LogFunc = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> Tuple[Path, Dict[str, Any], int]:
+    """Download official LAZ tiles, retain ground points, and clip to the AOI."""
+    from pyproj import Transformer
+    from utils.binary_paths import get_bundled_lib_env
+
+    props = dict(dataset.get("props") or {})
+    products = props.get("lpc_products") or []
+    if not products:
+        raise RuntimeError("Selected WESM work unit has no official LPC tiles")
+
+    laz_dir = get_output_dir() / "laz"
+    laz_dir.mkdir(parents=True, exist_ok=True)
+    output_path = laz_dir / f"{_output_basename(center_lat, center_lon, square_miles)}_ground.laz"
+    zone = max(1, min(60, int((center_lon + 180) // 6) + 1))
+    epsg = (32600 if center_lat >= 0 else 32700) + zone
+    transformer = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
+    minx, miny = transformer.transform(bbox4326[0], bbox4326[1])
+    maxx, maxy = transformer.transform(bbox4326[2], bbox4326[3])
+    minx, maxx = sorted((minx, maxx))
+    miny, maxy = sorted((miny, maxy))
+
+    config = load_config()
+    try:
+        buffer_m = float(config.get("dem_fill", {}).get("tin_buffer_m", 20))
+    except (TypeError, ValueError):
+        buffer_m = 20.0
+    buffer_m = max(0.0, min(100.0, buffer_m))
+    bounds = (
+        f"([{minx - buffer_m},{maxx + buffer_m}],"
+        f"[{miny - buffer_m},{maxy + buffer_m}])"
+    )
+
+    _log(log, "=== Downloading official USGS LPC tiles ===")
+    with tempfile.TemporaryDirectory(prefix="lpc_", dir=laz_dir) as temp_dir:
+        readers = []
+        tags = []
+        for index, product in enumerate(products):
+            url = _product_download_url(product) or ""
+            filename = Path(unquote(urlparse(url).path)).name or f"tile_{index}.laz"
+            tile = _download_product_file(
+                product,
+                Path(temp_dir) / filename,
+                log=log,
+                cancel_check=cancel_check,
+            )
+            tag = f"tile_{index}"
+            tags.append(tag)
+            readers.append({"type": "readers.las", "filename": str(tile), "tag": tag})
+
+        pipeline: List[Dict[str, Any]] = list(readers)
+        previous_inputs: Any = tags[0]
+        if len(tags) > 1:
+            pipeline.append({"type": "filters.merge", "inputs": tags, "tag": "merged"})
+            previous_inputs = "merged"
+        pipeline.extend(
+            [
+                {
+                    "type": "filters.range",
+                    "inputs": previous_inputs,
+                    "limits": "Classification[2:2]",
+                    "tag": "ground",
+                },
+                {
+                    "type": "filters.reprojection",
+                    "inputs": "ground",
+                    "out_srs": f"EPSG:{epsg}",
+                    "tag": "projected",
+                },
+                {
+                    "type": "filters.crop",
+                    "inputs": "projected",
+                    "bounds": bounds,
+                    "tag": "cropped",
+                },
+                {
+                    "type": "writers.las",
+                    "inputs": "cropped",
+                    "filename": str(output_path),
+                    "compression": "laszip",
+                },
+            ]
+        )
+        pipeline_path = laz_dir / "official_lpc_pipeline.json"
+        pipeline_path.write_text(json.dumps({"pipeline": pipeline}, indent=2), encoding="utf-8")
+        pdal_path = find_pdal(config)
+        proc = subprocess.Popen(
+            [pdal_path, "pipeline", str(pipeline_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=get_bundled_lib_env(),
+            creationflags=get_creation_flags(),
+            startupinfo=get_startupinfo(),
+        )
+        while proc.poll() is None:
+            if cancel_check and cancel_check():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                raise RuntimeError("Cancelled by user")
+            time.sleep(0.1)
+        stdout, stderr = proc.communicate()
+        if proc.returncode != 0:
+            output_path.unlink(missing_ok=True)
+            raise RuntimeError(f"Official LPC processing failed:\n{stderr or stdout}")
+
+    if not output_path.is_file() or output_path.stat().st_size < MIN_LAZ_SIZE:
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError("Official LPC tiles contained insufficient ground data")
+    return output_path, props, epsg
 
 
 def validate_laz_point_density(

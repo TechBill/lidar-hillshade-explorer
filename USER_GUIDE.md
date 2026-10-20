@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer – User Guide (v3.2.6)
+# LiDAR Hillshade Explorer – User Guide (v3.5)
 
 ## Overview
 **LiDAR Hillshade Explorer** is a lightweight desktop app for exploring terrain using LiDAR data.  
@@ -16,7 +16,7 @@ Because LiDAR Hillshade Explorer is distributed as a downloadable app (not from 
 
 ### macOS (Apple Silicon)
 
-Version 3.2.6 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
+Version 3.5 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
 Pro, iMac, Mac mini, Mac Studio, and Mac Pro systems. It runs natively on M1,
 M2, M3, M4, and newer Apple Silicon chips. Intel Macs require a separately
 built x86_64 version.
@@ -148,10 +148,17 @@ Choose how the app handles areas without ground-classified LiDAR returns:
 ## 5) Smart Dataset Selection
 
 When **Smart Selection** is enabled (default), the app automatically:
-- Finds all available LiDAR datasets for your location
-- Uses cached official USGS acquisition metadata to try the newest collection first
-- Uses LiDAR quality level as a tie-breaker (QL1 is higher quality than QL2)
-- Falls back to older datasets if the newest has insufficient data coverage
+- Finds official WESM work units with TNM products covering your location
+- Uses AWS EPT streaming when the selected work unit is available there
+- Otherwise uses its original-resolution USGS source DEM, when available
+- Falls back to official USGS LAZ tiles when neither EPT nor a source DEM exists
+- Tries the next-ranked work unit if the preferred one cannot supply enough data
+
+Choose a priority:
+
+- **Best Detail (Recommended)** prioritizes complete coverage, USGS validation,
+  native DEM resolution, quality level, collection date, and update date.
+- **Newest Survey** prioritizes collection date, then quality and resolution.
 
 When disabled, you can manually choose which dataset to use from a list.
 
@@ -297,7 +304,9 @@ Enable **Show Log Window** to open a real-time log of processing details. This i
 
 The app creates temporary working files during processing:
 
-- **Downloaded LiDAR** (LAZ format) - raw point cloud data
+- **Downloaded LiDAR** (LAZ format) - point-cloud data when EPT or LPC is used
+- **Source DEM** (GeoTIFF format) - original-resolution bare-earth data when
+  the selected work unit is not available through EPT
 - **DEM** (GeoTIFF) - processed elevation surface
 - **Hillshade** (GeoTIFF) - rendered terrain visualization
 
@@ -352,15 +361,17 @@ If you want faster performance, try smaller areas first (Small = 0.25 sq mi).
 ---
 
 ## No LiDAR Coverage
-The app uses USGS/AWS LiDAR datasets which primarily cover the United States. If you get "No data available," try a different location within the US.
+The app uses official USGS WESM/TNM data, plus AWS EPT when available. Coverage
+is primarily within the United States. If you get "No data available," try a
+different location within the US.
 
-Enable **Smart Selection** to automatically try older datasets that may have better coverage.
+Enable **Smart Selection** to automatically try the next-ranked WESM work unit.
 
 ---
 
 ## macOS Standalone Release
 
-The version 3.2.6 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
+The version 3.5 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
 Users do not need Homebrew, Python, QGIS, PDAL, or GDAL. Internet access is still
 required to locate and download USGS LiDAR data and periodically refresh USGS
 metadata.

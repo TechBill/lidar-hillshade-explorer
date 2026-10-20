@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 3.2.6
+# LiDAR Hillshade Explorer 3.5
 
 LiDAR Hillshade Explorer is a lightweight desktop app for exploring terrain using LiDAR elevation data.  
 Enter coordinates, click one button, and the app downloads available LiDAR, processes it, generates a hillshade image, and opens an interactive viewer.
@@ -7,8 +7,19 @@ This tool is designed for research and visualization. It is **not survey-grade G
 
 ---
 
-## What's New in 3.2.6
+## What's New in 3.5
 
+- Dataset discovery is now WESM-first. The app joins the daily official WESM
+  work-unit catalog to spatial results from the official TNM product API, so
+  work units no longer disappear merely because HoBu has not converted them
+  to EPT.
+- **Best Detail** is the default ranking and prioritizes complete coverage,
+  USGS validation status, native source resolution, quality level, collection
+  date, and update date. **Newest Survey** is available when recency matters
+  more than resolution.
+- Delivery now follows EPT → official source DEM → official LAZ. Source DEMs
+  are cropped at their original delivered resolution and used directly for
+  hillshade generation. This includes the 0.25 m `SD_BlackHills_1_D23` data.
 - Added an Advanced Settings option to fill KMZ NoData areas with opaque
   neutral gray. This prevents satellite imagery from showing through water
   and other areas without ground returns while leaving DEMs and GeoTIFFs
@@ -103,7 +114,8 @@ This tool is designed for research and visualization. It is **not survey-grade G
 - 5 archaeology presets for feature detection (low sun, multidirectional)
 - Custom hillshade parameters (z-factor, altitude, azimuth, multidirectional)
 - Export to GeoTIFF or KMZ (Google Earth)
-- Smart dataset selection using authoritative USGS acquisition dates and quality levels
+- WESM-first dataset selection with Best Detail and Newest Survey ranking
+- AWS EPT streaming with official USGS source-DEM and LAZ fallbacks
 - Official USGS WESM metadata cached locally and refreshed every seven days
 - Main-screen terrain styles for continuous output or preserving large gaps
 - Custom TIN/DEM settings (buffer, edge factor, fill distance, smoothing)
@@ -118,7 +130,7 @@ Because this app is distributed as a downloadable app (not from the official App
 
 ### macOS (Apple Silicon)
 
-The current 3.2.6 macOS release is built for Apple Silicon and runs natively on
+The current 3.5 macOS release is built for Apple Silicon and runs natively on
 M1, M2, M3, M4, and newer ARM64 Macs. It does not require Rosetta. An Intel Mac
 requires a separately built x86_64 release.
 
@@ -141,9 +153,9 @@ Only override this protection for a copy obtained from the project release you
 trust. The warning is expected for this unnotarized build, but a warning by
 itself is not proof that an arbitrary download is safe.
 
-### Install the macOS 3.2.6 Release
+### Install the macOS 3.5 Release
 
-1. Extract `LiDAR-Hillshade-3.2.6-Mac-ARM64.zip`.
+1. Extract `LiDAR-Hillshade-3.5-Mac-ARM64.zip`.
 2. Drag **LiDAR Hillshade Explorer.app** into **Applications**.
 3. Open the app. If macOS blocks the first launch, follow the steps above.
 
@@ -406,7 +418,7 @@ Create a ZIP:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-3.2.6-Mac-ARM64.zip"
+  "LiDAR-Hillshade-3.5-Mac-ARM64.zip"
 ```
 
 Or create a DMG:
@@ -420,7 +432,7 @@ create-dmg \
   --window-size 600 400 \
   --icon-size 100 \
   --app-drop-link 450 185 \
-  "LiDAR-Hillshade-Explorer-3.2.6-macOS-arm64.dmg" \
+  "LiDAR-Hillshade-Explorer-3.5-macOS-arm64.dmg" \
   "dist/LiDAR Hillshade Explorer.app"
 ```
 

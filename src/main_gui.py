@@ -13,12 +13,14 @@ from pathlib import Path
 import webbrowser
 
 from utils.config import (
+    DATASET_RANKING_LABELS,
     TERRAIN_STYLE_CONTINUOUS,
     TERRAIN_STYLE_CUSTOM,
     TERRAIN_STYLE_LABELS,
     TERRAIN_STYLE_PRESERVE,
     get_default_config,
     load_config,
+    normalize_dataset_ranking,
     normalize_terrain_style,
     save_config,
 )
@@ -231,10 +233,31 @@ class HillshadeExplorerApp:
 
         ttk.Label(
             dataset_frame,
-            text="When enabled, the app will try older datasets if the newest has insufficient data.",
+            text="When enabled, the app tries the next-ranked work unit if a download has insufficient data.",
             font=("", 9),
-            foreground="gray"
+            foreground="gray",
+            wraplength=430,
         ).pack(anchor=tk.W, pady=(5, 0))
+
+        ranking_row = ttk.Frame(dataset_frame)
+        ranking_row.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(ranking_row, text="Priority:").pack(side=tk.LEFT)
+        self._ranking_label_to_key = {
+            label: key for key, label in DATASET_RANKING_LABELS.items()
+        }
+        initial_ranking = normalize_dataset_ranking(
+            self.config.get("preferences", {}).get("dataset_ranking")
+        )
+        self.dataset_ranking_var = tk.StringVar(
+            value=DATASET_RANKING_LABELS[initial_ranking]
+        )
+        ttk.Combobox(
+            ranking_row,
+            textvariable=self.dataset_ranking_var,
+            values=list(DATASET_RANKING_LABELS.values()),
+            state="readonly",
+            width=25,
+        ).pack(side=tk.LEFT, padx=(8, 0))
 
         # Generate button
         self.generate_btn = ttk.Button(
@@ -335,6 +358,10 @@ class HillshadeExplorerApp:
             }
             self.config["preferences"]["smart_select"] = self.smart_select_var.get()
             self.config["preferences"]["terrain_style"] = self._selected_terrain_style()
+            ranking_label = self.dataset_ranking_var.get()
+            self.config["preferences"]["dataset_ranking"] = (
+                self._ranking_label_to_key.get(ranking_label, "best_detail")
+            )
 
             save_config(self.config)
         except Exception as e:
@@ -479,6 +506,20 @@ class HillshadeExplorerApp:
             resolution = props.get("dem_gsd_meters")
             if resolution:
                 details.append(f"{resolution} m")
+            source_label = {
+                "ept": "EPT",
+                "source_dem": "source DEM",
+                "lpc": "official LAZ",
+            }.get(props.get("source_type"))
+            if source_label:
+                details.append(source_label)
+            validation = (
+                props.get("source_dem_category")
+                if props.get("source_type") == "source_dem"
+                else props.get("lpc_category")
+            )
+            if validation:
+                details.append(str(validation))
             detail_text = f" — {' — '.join(details)}" if details else ""
             display_text = f"{idx + 1}. {ds_id}{detail_text}"
             listbox.insert(tk.END, display_text)
@@ -623,7 +664,7 @@ class HillshadeExplorerApp:
             lon: Longitude
             size_sqmi: Area size in square miles
             smart_select: Enable smart dataset selection with fallback
-            selected_dataset_rank: Dataset rank to use (0=newest, 1=second-newest, etc.)
+            selected_dataset_rank: Index in the active Best Detail/Newest ranking
         """
         try:
             # Mark processing as started

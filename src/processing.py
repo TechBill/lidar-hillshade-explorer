@@ -13,6 +13,8 @@ from typing import Any, Dict, Callable, Optional
 
 from lidar_core.aws_operations import (
     clip_aws_aoi_to_ground_laz,
+    download_lpc_for_aoi,
+    download_source_dem_for_aoi,
     validate_laz_point_density,
     list_intersecting_datasets,
 )
@@ -108,14 +110,17 @@ class ProcessingOrchestrator:
 
             dataset_rank = selected_dataset_rank
             laz_path = None
+            dem_path = None
             ds_props = None
             epsg = None
+            point_spacing = 0.0
+            dem_resolution = 0.0
 
             # Try datasets with smart selection fallback
             available_datasets = list_intersecting_datasets(bbox4326=bbox, log=log)
             if not available_datasets:
                 raise RuntimeError(
-                    "No USGS/AWS LiDAR datasets found for this location. "
+                    "No USGS LiDAR datasets found for this location. "
                     "Try a different area within the United States."
                 )
             if dataset_rank >= len(available_datasets):
@@ -137,31 +142,58 @@ class ProcessingOrchestrator:
                 progress_callback(2, total_steps, f"Downloading LiDAR data (attempt {attempt + 1})...")
 
                 try:
-                    laz_path, ds_props, epsg = clip_aws_aoi_to_ground_laz(
-                        bbox4326=bbox,
-                        center_lat=lat,
-                        center_lon=lon,
-                        square_miles=size_sqmi,
-                        dataset_rank=dataset_rank,
-                        log=log,
-                        cancel_check=cancel_check
-                    )
+                    candidate = available_datasets[dataset_rank]
+                    source_type = candidate.get("props", {}).get("source_type")
+                    if source_type == "source_dem":
+                        dem_path, ds_props, epsg, dem_resolution = download_source_dem_for_aoi(
+                            dataset=candidate,
+                            bbox4326=bbox,
+                            center_lat=lat,
+                            center_lon=lon,
+                            square_miles=size_sqmi,
+                            log=log,
+                            cancel_check=cancel_check,
+                        )
+                        log(f"Successfully obtained source DEM: {dem_path.name}")
+                    elif source_type == "lpc":
+                        laz_path, ds_props, epsg = download_lpc_for_aoi(
+                            dataset=candidate,
+                            bbox4326=bbox,
+                            center_lat=lat,
+                            center_lon=lon,
+                            square_miles=size_sqmi,
+                            log=log,
+                            cancel_check=cancel_check,
+                        )
+                    else:
+                        laz_path, ds_props, epsg = clip_aws_aoi_to_ground_laz(
+                            bbox4326=bbox,
+                            center_lat=lat,
+                            center_lon=lon,
+                            square_miles=size_sqmi,
+                            dataset_rank=dataset_rank,
+                            dataset=candidate,
+                            log=log,
+                            cancel_check=cancel_check,
+                        )
 
-                    # Validate point density
-                    if smart_select:
+                    # Validate point density for point-cloud delivery paths.
+                    if laz_path is not None and smart_select:
                         log("Validating point density...")
                         if not validate_laz_point_density(laz_path, size_sqmi, log=log):
                             log("Point density insufficient, trying next dataset...")
+                            laz_path = None
                             dataset_rank += 1
                             continue
 
                     # Success!
-                    log(f"Successfully obtained LiDAR data: {laz_path.name}")
+                    if laz_path is not None:
+                        log(f"Successfully obtained LiDAR data: {laz_path.name}")
                     break
 
                 except RuntimeError as e:
                     error_msg = str(e)
-                    if "No USGS/AWS LiDAR datasets" in error_msg:
+                    if "No USGS LiDAR datasets" in error_msg:
                         # No datasets available at all
                         raise
                     elif "Requested dataset rank" in error_msg and "but only" in error_msg:
@@ -181,25 +213,30 @@ class ProcessingOrchestrator:
                         # Final attempt failed or smart_select disabled
                         raise
 
-            if laz_path is None:
+            if laz_path is None and dem_path is None:
                 raise RuntimeError("Failed to obtain LiDAR data")
 
             if cancel_check():
                 raise RuntimeError("Cancelled by user")
 
-            # Step 3: Generate DEM
-            progress_callback(3, total_steps, "Creating terrain model...")
-            log("\n=== DEM Generation ===")
+            # Step 3: Generate a DEM from point clouds. Official source DEMs
+            # are already bare-earth rasters at their delivered resolution.
+            if dem_path is None:
+                progress_callback(3, total_steps, "Creating terrain model...")
+                log("\n=== DEM Generation ===")
 
-            dem_path, point_spacing, dem_resolution = run_tin_dem(
-                lidar_path=laz_path,
-                aoi_bbox4326=bbox,
-                epsg_code=epsg,
-                log=log,
-                cancel_check=cancel_check
-            )
+                dem_path, point_spacing, dem_resolution = run_tin_dem(
+                    lidar_path=laz_path,
+                    aoi_bbox4326=bbox,
+                    epsg_code=epsg,
+                    log=log,
+                    cancel_check=cancel_check
+                )
 
-            log(f"DEM created: {dem_path}")
+                log(f"DEM created: {dem_path}")
+            else:
+                progress_callback(3, total_steps, "Preparing source terrain model...")
+                log("Using the official original-resolution bare-earth DEM directly.")
 
             if cancel_check():
                 raise RuntimeError("Cancelled by user")
@@ -222,7 +259,7 @@ class ProcessingOrchestrator:
             return {
                 "hillshade": str(hillshade_path),
                 "dem": str(dem_path),
-                "laz": str(laz_path),
+                "laz": str(laz_path) if laz_path is not None else None,
                 "bbox": bbox,
                 "metadata": {
                     "center_lat": lat,
@@ -241,6 +278,13 @@ class ProcessingOrchestrator:
                     "geoid": ds_props.get("geoid"),
                     "metadata_source": ds_props.get("metadata_source"),
                     "metadata_link": ds_props.get("metadata_link"),
+                    "data_source": ds_props.get("source_type"),
+                    "source_dem_publication_date": ds_props.get("source_dem_publication_date"),
+                    "validation_status": (
+                        ds_props.get("source_dem_category")
+                        if ds_props.get("source_type") == "source_dem"
+                        else ds_props.get("lpc_category")
+                    ),
                     "epsg": epsg,
                     "point_spacing": point_spacing,
                     "dem_resolution": dem_resolution,

@@ -98,6 +98,21 @@ operation only: never use this preference to overwrite DEM elevations, remove
 GeoTIFF NoData metadata, or synthesize underwater terrain. The source DEM and
 GeoTIFF must remain analytically unchanged.
 
+## WESM-first discovery and delivery
+
+`list_intersecting_datasets()` in `src/lidar_core/aws_operations.py` treats
+the daily WESM CSV as the authoritative work-unit catalog and metadata source.
+The CSV has no geometry, while the WESM GeoPackage is several gigabytes, so the
+app uses the official TNM Access products API as the lightweight spatial query
+for intersecting OPR/source-DEM and LPC tiles. Results are joined back to WESM
+by the work-unit component in official product paths.
+
+The HoBu coverage index is now only an EPT availability/delivery index. It must
+not become the primary catalog again. Delivery priority for a selected work
+unit is AWS EPT, then official source DEM, then official LPC/LAZ. Source DEMs
+are cropped and mosaicked without changing their elevation values; point-cloud
+paths continue to retain classification 2 before DEM generation.
+
 ## GDAL/PROJ/rasterio environment — this took three rounds to get right
 
 `src/utils/binary_paths.py` has two *different* environment-setup functions

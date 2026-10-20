@@ -36,12 +36,26 @@ TERRAIN_STYLE_PROFILES = {
     },
 }
 
+DATASET_RANKING_BEST_DETAIL = "best_detail"
+DATASET_RANKING_NEWEST = "newest"
+DATASET_RANKING_LABELS = {
+    DATASET_RANKING_BEST_DETAIL: "Best Detail (Recommended)",
+    DATASET_RANKING_NEWEST: "Newest Survey",
+}
+
 
 def normalize_terrain_style(value: Any) -> str:
     """Return a supported terrain style key, defaulting to continuous."""
     if value in TERRAIN_STYLE_LABELS:
         return str(value)
     return TERRAIN_STYLE_CONTINUOUS
+
+
+def normalize_dataset_ranking(value: Any) -> str:
+    """Return a supported dataset ranking mode."""
+    if value in DATASET_RANKING_LABELS:
+        return str(value)
+    return DATASET_RANKING_BEST_DETAIL
 
 
 def get_effective_dem_settings(config: dict[str, Any]) -> dict[str, Any]:
@@ -139,6 +153,7 @@ def get_default_config() -> dict[str, Any]:
             "smart_select": True,
             "show_log": False,
             "terrain_style": TERRAIN_STYLE_CONTINUOUS,
+            "dataset_ranking": DATASET_RANKING_BEST_DETAIL,
             "opaque_kmz_nodata": False
         },
         "ui": {

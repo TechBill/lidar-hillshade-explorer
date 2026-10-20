@@ -168,12 +168,17 @@ class HillshadeViewer:
 
         dataset_rows = [
             ("Work unit", meta.get("workunit") or meta.get("dataset_id")),
+            ("Delivery", self._format_data_source(meta.get("data_source"))),
             ("Collected", self._format_date_range(
                 meta.get("collection_start"), meta.get("collection_end")
             )),
             ("Quality", self._format_quality_level(meta.get("quality_level"))),
             ("USGS DEM", self._format_meters(meta.get("dem_gsd_meters"))),
-            ("Published", self._format_date(meta.get("lpc_publication_date"))),
+            ("Published", self._format_date(
+                meta.get("source_dem_publication_date")
+                or meta.get("lpc_publication_date")
+            )),
+            ("Validation", meta.get("validation_status")),
             ("Horizontal CRS", self._format_crs(meta.get("horizontal_crs"), meta.get("epsg"))),
             ("Vertical CRS", self._format_crs(meta.get("vertical_crs"))),
             ("Geoid", meta.get("geoid")),
@@ -366,6 +371,14 @@ class HillshadeViewer:
             return f"{float(value):g} m"
         except (TypeError, ValueError):
             return f"{value} m"
+
+    @staticmethod
+    def _format_data_source(value) -> str:
+        return {
+            "ept": "AWS EPT stream",
+            "source_dem": "USGS source DEM",
+            "lpc": "USGS LAZ tiles",
+        }.get(str(value or ""), "Not available")
 
     @staticmethod
     def _format_epsg(value) -> str:
