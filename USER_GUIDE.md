@@ -25,6 +25,10 @@ The main form opens at a display-aware size. If the window is shortened or the
 screen cannot show the complete form, use its vertical scrollbar or mouse wheel
 to reach the Generate and Advanced Settings buttons.
 
+The Hillshade Viewer also opens at a display-aware height so its sidebar buttons
+are visible when space permits. Its sidebar remains scrollable on shorter
+screens or when Custom style controls need additional room.
+
 This free, open-source hobby release is **ad-hoc signed but not Apple-notarized**.
 Apple requires a paid Developer Program membership for Developer ID signing and
 notarization, so macOS may show **Move to Trash** or a message like:

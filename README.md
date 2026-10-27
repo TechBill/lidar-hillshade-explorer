@@ -14,6 +14,8 @@ This tool is designed for research and visualization. It is **not survey-grade G
   modules. The original import path remains as a compatibility facade.
 - Preserved the existing catalog ranking and delivery behavior while making
   each provider easier to test and improve independently.
+- Made the Hillshade Viewer open tall enough to show its complete sidebar when
+  the display permits, while retaining sidebar scrolling on smaller screens.
 
 ---
 

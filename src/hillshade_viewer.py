@@ -27,6 +27,18 @@ from lidar_core.hillshade_engine import (
 )
 
 
+def viewer_window_size(
+    screen_width: int,
+    screen_height: int,
+    sidebar_content_height: int,
+) -> tuple[int, int]:
+    """Choose a roomy viewer size that remains inside the current display."""
+    available_width = max(700, int(screen_width) - 40)
+    available_height = max(600, int(screen_height) - 100)
+    desired_height = max(800, int(sidebar_content_height) + 12)
+    return min(1200, available_width), min(desired_height, available_height)
+
+
 class HillshadeViewer:
     """
     Separate window for viewing and styling hillshades.
@@ -73,16 +85,6 @@ class HillshadeViewer:
         except Exception:
             pass  # Icon not critical
 
-        # Fit the viewer to the current display instead of extending beyond
-        # shorter laptop screens.
-        screen_width = self.window.winfo_screenwidth()
-        screen_height = self.window.winfo_screenheight()
-        window_width = min(1200, max(700, screen_width - 40))
-        window_height = min(800, max(600, screen_height - 80))
-        center_x = int((screen_width - window_width) / 2)
-        center_y = int((screen_height - window_height) / 2)
-        self.window.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
-
         # Override window close to show confirmation
         self.window.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
@@ -110,6 +112,7 @@ class HillshadeViewer:
 
         # Build UI
         self._build_ui()
+        self._fit_window_to_controls()
 
         # Load initial hillshade
         self._load_and_display_hillshade(initial_hillshade)
@@ -125,27 +128,30 @@ class HillshadeViewer:
         sidebar = tk.Frame(paned, bd=1, relief="groove", width=315)
         paned.add(sidebar, minsize=295, width=315)
 
-        sidebar_canvas = tk.Canvas(sidebar, highlightthickness=0, width=295)
+        self.sidebar_canvas = tk.Canvas(
+            sidebar, highlightthickness=0, width=295
+        )
         sidebar_scrollbar = ttk.Scrollbar(
-            sidebar, orient=tk.VERTICAL, command=sidebar_canvas.yview
+            sidebar, orient=tk.VERTICAL, command=self.sidebar_canvas.yview
         )
         sidebar_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        sidebar_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        sidebar_canvas.configure(yscrollcommand=sidebar_scrollbar.set)
+        self.sidebar_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.sidebar_canvas.configure(yscrollcommand=sidebar_scrollbar.set)
 
-        left_panel = tk.Frame(sidebar_canvas)
-        sidebar_window = sidebar_canvas.create_window(
+        left_panel = tk.Frame(self.sidebar_canvas)
+        self.sidebar_content = left_panel
+        sidebar_window = self.sidebar_canvas.create_window(
             (0, 0), window=left_panel, anchor=tk.NW
         )
         left_panel.bind(
             "<Configure>",
-            lambda event: sidebar_canvas.configure(
-                scrollregion=sidebar_canvas.bbox("all")
+            lambda event: self.sidebar_canvas.configure(
+                scrollregion=self.sidebar_canvas.bbox("all")
             ),
         )
-        sidebar_canvas.bind(
+        self.sidebar_canvas.bind(
             "<Configure>",
-            lambda event: sidebar_canvas.itemconfigure(
+            lambda event: self.sidebar_canvas.itemconfigure(
                 sidebar_window, width=event.width
             ),
         )
@@ -337,6 +343,21 @@ class HillshadeViewer:
 
         # Build initial dynamic controls
         self._rebuild_dynamic_controls()
+
+    def _fit_window_to_controls(self) -> None:
+        """Open tall enough for the complete sidebar when the display permits."""
+        self.window.update_idletasks()
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        content_height = self.sidebar_content.winfo_reqheight()
+        window_width, window_height = viewer_window_size(
+            screen_width, screen_height, content_height
+        )
+        center_x = int((screen_width - window_width) / 2)
+        center_y = int((screen_height - window_height) / 2)
+        self.window.geometry(
+            f"{window_width}x{window_height}+{center_x}+{center_y}"
+        )
 
     @staticmethod
     def _format_date(value) -> str:

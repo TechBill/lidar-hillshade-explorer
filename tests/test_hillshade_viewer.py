@@ -8,7 +8,7 @@ import tkinter as tk
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from hillshade_viewer import HillshadeViewer  # noqa: E402
+from hillshade_viewer import HillshadeViewer, viewer_window_size  # noqa: E402
 
 
 class _VariableStub:
@@ -77,6 +77,17 @@ class CustomModeControlTests(unittest.TestCase):
 
         self.assertEqual(entry.selection, (0, tk.END))
         self.assertEqual(entry.cursor, tk.END)
+
+
+class ViewerWindowSizeTests(unittest.TestCase):
+    def test_large_display_opens_tall_enough_for_sidebar(self):
+        self.assertEqual(viewer_window_size(1920, 1080, 890), (1200, 902))
+
+    def test_short_display_keeps_viewer_inside_available_height(self):
+        self.assertEqual(viewer_window_size(1366, 768, 890), (1200, 668))
+
+    def test_existing_baseline_size_is_preserved_for_short_content(self):
+        self.assertEqual(viewer_window_size(1920, 1080, 650), (1200, 800))
 
 
 if __name__ == "__main__":
