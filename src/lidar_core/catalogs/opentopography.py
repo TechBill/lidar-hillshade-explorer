@@ -33,7 +33,7 @@ def _fetch_json_url(url: str, timeout: int = 45) -> Dict[str, Any]:
     """Fetch a public JSON document with the app's normal TLS handling."""
     request = Request(
         url,
-        headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.2"},
+        headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.5"},
     )
     if HAS_CERTIFI:
         ssl_context = ssl.create_default_context(cafile=certifi.where())

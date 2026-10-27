@@ -169,8 +169,8 @@ def clip_aws_aoi_to_ground_laz(
         ds_props = dict(dataset.get("props") or {})
         ept_url = ds_props.get("ept_url")
         epsg_code = _get_ept_srs_epsg(ept_url) if ept_url else 0
-    if ds_props.get("source_type") != "ept" or not ept_url:
-        raise RuntimeError("Selected work unit is not available through AWS EPT")
+    if ds_props.get("source_type") not in {"ept", "noaa_ept", "usiei_ept"} or not ept_url:
+        raise RuntimeError("Selected dataset is not available through supported EPT delivery")
 
     ds_id = ds_props.get("id") or "unknown"
 
@@ -331,7 +331,7 @@ def _download_product_file(
         raise RuntimeError(f"Unexpected USGS product host: {host or 'missing'}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    request = Request(url, headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.2"})
+    request = Request(url, headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.5"})
     if HAS_CERTIFI:
         ssl_context = ssl.create_default_context(cafile=certifi.where())
     else:

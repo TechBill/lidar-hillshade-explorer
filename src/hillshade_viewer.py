@@ -400,6 +400,8 @@ class HillshadeViewer:
     def _format_data_source(value) -> str:
         return {
             "ept": "AWS EPT stream",
+            "noaa_ept": "NOAA Coastal EPT stream",
+            "usiei_ept": "USIEI-linked EPT stream",
             "source_dem": "USGS source DEM",
             "opentopography_dem": "OpenTopography DTM",
             "lpc": "USGS LAZ tiles",

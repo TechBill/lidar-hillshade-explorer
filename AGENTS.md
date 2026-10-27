@@ -99,7 +99,7 @@ to overwrite DEM elevations, remove GeoTIFF NoData metadata, or synthesize
 underwater terrain. The source DEM and GeoTIFF must remain analytically
 unchanged.
 
-## Combined USGS/OpenTopography discovery and delivery
+## Combined USGS/OpenTopography/NOAA/USIEI discovery and delivery
 
 `list_intersecting_datasets()` in `src/lidar_core/catalogs/usgs.py` treats
 the daily WESM CSV as the authoritative work-unit catalog and metadata source.
@@ -121,6 +121,21 @@ become the primary USGS catalog again. USGS delivery priority remains AWS EPT,
 then official source DEM, then official LPC/LAZ. Source DEMs and OpenTopography
 DTMs are cropped and mosaicked without changing their elevation values;
 point-cloud paths continue to retain classification 2 before DEM generation.
+
+The official USIEI topographic-lidar ArcGIS layer is queried once per AOI.
+Its real GeoJSON footprint must cover the complete AOI before a record is
+admitted. `catalogs/noaa.py` accepts only complete, public `Lidar-Topo`
+records with a public NOAA EPT URL and confirmed classification 2 ground
+points. Topobathy/bathymetry remain excluded from normal terrain mode.
+
+`catalogs/usiei.py` is also a discovery and metadata fallback. It may deliver
+an otherwise-missing dataset only through a supported official USGS EPT URL;
+unsupported external links remain metadata and must not become processing
+candidates. Project-level USIEI records enrich matching WESM work units under
+`usiei_*` fields without overwriting authoritative WESM values. Normalize the
+project alias when deduplicating numbered work units (for example,
+`MO_SE11County_B24` and `MO_SE11County_1_B24`). USGS delivery remains preferred
+when the same survey is available from both USGS and NOAA.
 
 ## GDAL/PROJ/rasterio environment — this took three rounds to get right
 

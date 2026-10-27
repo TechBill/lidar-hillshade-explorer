@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 6.3.2
+# LiDAR Hillshade Explorer 6.3.5
 
 A simplified desktop LiDAR hillshade application for non-technical users.
 
@@ -11,7 +11,7 @@ User enters coordinates, clicks one button, and the app automatically finds LiDA
 - **Simple Input**: Enter latitude/longitude and area size (0.25, 0.5, or 1.0 sq mi)
 - **Paste Coordinates**: One-click paste from clipboard (supports Google Maps, Google Earth KML, comma/space-separated)
 - **Automatic Discovery**: Compares official USGS WESM/TNM/AWS data with public
-  OpenTopography high-resolution lidar DTMs
+  OpenTopography DTMs, NOAA Coastal LiDAR EPT, and USIEI records
 - **Smart Selection**: Best Detail or Newest Survey ranking with automatic
   OpenTopography DTM, EPT, source-DEM, and official-LAZ delivery paths
 - **Terrain Styles**: Continuous Terrain, Preserve Large Gaps, and Custom TIN settings
@@ -38,7 +38,7 @@ Development mode requires system-level tools (install via QGIS/Homebrew/etc.):
 - PDAL (LiDAR processing + DEM generation)
 - GDAL (hillshade generation and KMZ export)
 
-The standalone 6.3.2 release bundles these tools and does not require users to
+The standalone 6.3.5 release bundles these tools and does not require users to
 install Python, PDAL, GDAL, PROJ, Homebrew, or QGIS.
 
 ### Python Dependencies
@@ -126,7 +126,9 @@ LiDARHillshadeExplorer/
 │   │   ├── catalogs/
 │   │   │   ├── usgs.py           # WESM/TNM discovery
 │   │   │   ├── opentopography.py # Public DTM/STAC discovery
-│   │   │   └── ept.py            # AWS EPT availability
+│   │   │   ├── ept.py            # AWS EPT availability
+│   │   │   ├── noaa.py           # NOAA Coastal EPT candidates
+│   │   │   └── usiei.py           # USIEI discovery and metadata
 │   │   ├── delivery/
 │   │   │   ├── point_cloud.py    # EPT/LPC download and clipping
 │   │   │   └── raster_dem.py     # Source DEM crop/mosaic
@@ -182,7 +184,8 @@ Install QGIS which includes GDAL, or set `GDALDEM_BIN` environment variable.
 
 ### No LiDAR Coverage
 Try a different location. The app searches official USGS WESM/TNM products,
-AWS EPT delivery, and public OpenTopography lidar-derived DTMs.
+AWS EPT delivery, public OpenTopography lidar-derived DTMs, NOAA Coastal LiDAR,
+and USIEI.
 
 ### Low Point Density
 Enable "Smart Selection" to automatically try the next-ranked work unit.

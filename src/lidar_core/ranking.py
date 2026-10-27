@@ -126,7 +126,10 @@ def _dataset_sort_key(
     quality = props.get("quality_level")
     quality_score = -int(quality) if isinstance(quality, int) else -999
     try:
-        resolution_score = -float(props.get("dem_gsd_meters"))
+        effective_resolution = props.get("dem_gsd_meters")
+        if effective_resolution in {None, ""}:
+            effective_resolution = props.get("point_spacing_meters")
+        resolution_score = -float(effective_resolution)
     except (TypeError, ValueError):
         resolution_score = -999.0
     updated = max(

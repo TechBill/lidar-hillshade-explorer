@@ -26,6 +26,17 @@ from lidar_core.catalogs.opentopography import (
     _opentopography_item_for_collection,
     _remote_raster_resolution,
 )
+from lidar_core.catalogs.noaa import NOAA_CATALOG_URL, _noaa_candidates
+from lidar_core.catalogs.usiei import (
+    USIEI_CATALOG_URL,
+    USIEI_TOPO_QUERY_URL,
+    _ept_has_ground_class,
+    _ept_links,
+    _merge_usiei_metadata,
+    _parse_point_spacing,
+    _query_usiei_topographic,
+    _usiei_candidates,
+)
 from lidar_core.catalogs.usgs import (
     MIN_WESM_RECORDS,
     REQUIRED_WESM_FIELDS,

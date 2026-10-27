@@ -338,7 +338,7 @@ def _query_tnm_products(
         )
         request = Request(
             f"{TNM_PRODUCTS_URL}?{query}",
-            headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.2"},
+            headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.5"},
         )
         if HAS_CERTIFI:
             ssl_context = ssl.create_default_context(cafile=certifi.where())
@@ -501,7 +501,7 @@ def list_intersecting_datasets(
     ranking_mode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Return ranked USGS and OpenTopography datasets intersecting the requested AOI.
+    Return ranked USGS, OpenTopography, NOAA, and USIEI datasets for the AOI.
 
     Args:
         bbox4326: Bounding box (lon_min, lat_min, lon_max, lat_max) in EPSG:4326
@@ -511,7 +511,14 @@ def list_intersecting_datasets(
         List of dicts with keys: id, props
     """
     from lidar_core.catalogs.ept import _ept_candidates
+    from lidar_core.catalogs.noaa import _noaa_candidates
     from lidar_core.catalogs.opentopography import _opentopography_candidates
+    from lidar_core.catalogs.usiei import (
+        _merge_usiei_metadata,
+        _project_identity,
+        _query_usiei_topographic,
+        _usiei_candidates,
+    )
 
     wesm_records = ensure_wesm_metadata(log=log)
     lon_min, lat_min, lon_max, lat_max = bbox4326
@@ -574,6 +581,61 @@ def list_intersecting_datasets(
             candidates[key] = ept_candidate
 
     try:
+        usiei_records = _query_usiei_topographic(aoi_bbox, log=log)
+    except Exception as exc:
+        _log(log, f"USIEI catalog unavailable ({exc})")
+        usiei_records = []
+
+    try:
+        usiei = _usiei_candidates(
+            usiei_records, aoi_bbox, wesm_records, log=log
+        )
+    except Exception as exc:
+        _log(log, f"USIEI delivery lookup unavailable ({exc})")
+        usiei = {}
+    for key, usiei_candidate in usiei.items():
+        if key not in candidates:
+            candidates[key] = usiei_candidate
+
+    # Project-level USIEI records enrich matching USGS work units. WESM
+    # remains authoritative and these fields are attached under usiei_* keys.
+    _merge_usiei_metadata(candidates, usiei_records)
+
+    try:
+        noaa = _noaa_candidates(usiei_records, aoi_bbox, log=log)
+    except Exception as exc:
+        _log(log, f"NOAA Coastal LiDAR lookup unavailable ({exc})")
+        noaa = {}
+    existing_project_identities = {
+        _project_identity(
+            item.get("props", {}).get("workunit")
+            or item.get("props", {}).get("id")
+            or item.get("id")
+        )
+        for item in candidates.values()
+    }
+    for key, noaa_candidate in noaa.items():
+        noaa_props = noaa_candidate.get("props", {})
+        identity = noaa_props.get("usiei_project_identity")
+        if identity and identity in existing_project_identities:
+            # The survey is already represented by its preferred USGS route.
+            # Retain NOAA as an alternate delivery without showing a duplicate.
+            for existing in candidates.values():
+                existing_props = existing.get("props", {})
+                if _project_identity(
+                    existing_props.get("workunit")
+                    or existing_props.get("id")
+                    or existing.get("id")
+                ) == identity:
+                    existing_props["noaa_ept_url"] = noaa_props.get("ept_url")
+                    existing_props["noaa_mission_id"] = noaa_props.get("noaa_mission_id")
+                    break
+            continue
+        candidates[key] = noaa_candidate
+        if identity:
+            existing_project_identities.add(identity)
+
+    try:
         opentopography = _opentopography_candidates(aoi_bbox, log=log)
     except Exception as exc:
         _log(log, f"OpenTopography catalog unavailable ({exc})")
@@ -599,7 +661,8 @@ def list_intersecting_datasets(
     )
     _log(
         log,
-        f"Combined catalog discovery found {len(result)} dataset(s); "
+        f"Combined USGS/OpenTopography/NOAA/USIEI discovery found "
+        f"{len(result)} dataset(s); "
         f"ranking mode: {'Best Detail' if ranking_mode == 'best_detail' else 'Newest Survey'}",
     )
     return result
@@ -647,7 +710,7 @@ def select_dataset_for_bbox(
     best_id = chosen["id"]
     best_props = dict(chosen["props"])
     source_type = best_props.get("source_type")
-    if source_type == "ept":
+    if source_type in {"ept", "noaa_ept", "usiei_ept"}:
         delivery_url = str(best_props["ept_url"])
         epsg = _get_ept_srs_epsg(delivery_url)
     else:

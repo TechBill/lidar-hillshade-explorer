@@ -7,7 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from lidar_core import aws_operations
-from lidar_core.catalogs import ept, opentopography, usgs
+from lidar_core.catalogs import ept, noaa, opentopography, usgs, usiei
 from lidar_core.delivery import point_cloud, raster_dem
 from lidar_core import ranking
 
@@ -20,6 +20,8 @@ class CompatibilityFacadeTests(unittest.TestCase):
             aws_operations._opentopography_candidates,
             opentopography._opentopography_candidates,
         )
+        self.assertIs(aws_operations._noaa_candidates, noaa._noaa_candidates)
+        self.assertIs(aws_operations._usiei_candidates, usiei._usiei_candidates)
         self.assertIs(aws_operations._dataset_sort_key, ranking._dataset_sort_key)
 
     def test_delivery_api_is_reexported_from_legacy_module(self):

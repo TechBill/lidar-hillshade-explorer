@@ -13,11 +13,19 @@ from lidar_core.aws_operations import (  # noqa: E402
     _enrich_dataset_properties,
     _geometry_intersects_bbox,
     _opentopography_candidates,
+    _noaa_candidates,
     _parse_wesm_csv,
     _product_workunit_key,
     _products_cover_bbox,
     _validate_wesm_records,
+    _usiei_candidates,
     list_intersecting_datasets,
+)
+from lidar_core.catalogs.usiei import (  # noqa: E402
+    _merge_usiei_metadata,
+    _parse_point_spacing,
+    _query_usiei_topographic,
+    _usiei_links,
 )
 from processing import ProcessingOrchestrator  # noqa: E402
 from utils.config import (  # noqa: E402
@@ -75,12 +83,13 @@ class CoverageGeometryTests(unittest.TestCase):
         }
         self.assertFalse(_geometry_intersects_bbox(geometry, (4, 4, 6, 6)))
 
+    @patch("lidar_core.catalogs.usiei._query_usiei_topographic", return_value=[])
     @patch("lidar_core.catalogs.opentopography._opentopography_candidates", return_value={})
     @patch("lidar_core.catalogs.usgs.ensure_wesm_metadata", return_value={})
     @patch("lidar_core.catalogs.usgs._query_tnm_products", return_value=[])
     @patch("lidar_core.catalogs.ept.ensure_aws_index")
     def test_selection_uses_real_coverage_not_envelope(
-        self, mock_index, _mock_tnm, _mock_wesm, _mock_opentopography
+        self, mock_index, _mock_tnm, _mock_wesm, _mock_opentopography, _mock_usiei
     ):
         false_positive = polygon_feature(
             "Newer_false_positive_2024",
@@ -192,6 +201,125 @@ class SmartSelectionTests(unittest.TestCase):
         self.assertEqual(result["metadata"]["dem_resolution"], 0.25)
 
 
+class AdditionalCatalogTests(unittest.TestCase):
+    @staticmethod
+    def _feature(**overrides):
+        properties = {
+            "ID": 53714,
+            "Title": "2023 Maryland Lidar: Charles County, MD",
+            "DataType": "Lidar-Topo",
+            "Status": "Complete",
+            "Links": (
+                '{"links":['
+                '{"link":"https://noaa-nos-coastal-lidar-pds.s3.amazonaws.com/'
+                'entwine/geoid18/10312/ept.json","linktype":"EPT Link"},'
+                '{"link":"https://coast.noaa.gov/dataviewer/","linktype":"Data Access"}'
+                ']}'
+            ),
+            "pointspacing": "0.5 m",
+            "collectionyear": 2023,
+            "qualitylevel": 2,
+            "meets3dep_lpc": "Yes",
+            "pointclasses": "1, 2, 7, 9, 17, 18, 20",
+            "verticaldatum": "NAVD88",
+            "horizontaldatum": "NAD83(2011)",
+            "restrictions": "Public",
+            "RecordOwner": "NOAA",
+            "missionid": 10312,
+        }
+        properties.update(overrides)
+        return {
+            "type": "Feature",
+            "properties": properties,
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]],
+            },
+        }
+
+    def test_usiei_link_and_spacing_parsing(self):
+        props = self._feature()["properties"]
+        self.assertEqual(len(_usiei_links(props)), 2)
+        self.assertEqual(_parse_point_spacing("0.35 m (spec)"), 0.35)
+        self.assertIsNone(_parse_point_spacing("Not available"))
+
+    @patch("lidar_core.catalogs.usiei._fetch_json_url")
+    def test_usiei_query_uses_bbox_envelope(self, mock_fetch):
+        mock_fetch.return_value = {"type": "FeatureCollection", "features": []}
+        records = _query_usiei_topographic((-77.1, 38.2, -76.9, 38.4))
+        self.assertEqual(records, [])
+        url = mock_fetch.call_args.args[0]
+        self.assertIn("geometry=-77.1000000000%2C38.2000000000%2C-76.9000000000%2C38.4000000000", url)
+        self.assertIn("geometryType=esriGeometryEnvelope", url)
+        self.assertIn("f=geojson", url)
+
+    def test_noaa_builds_ground_class_ept_candidate(self):
+        candidates = _noaa_candidates(
+            [self._feature()], (0.5, 0.5, 1.5, 1.5)
+        )
+        candidate = candidates["noaa:10312"]
+        self.assertEqual(candidate["props"]["source_type"], "noaa_ept")
+        self.assertEqual(candidate["props"]["point_spacing_meters"], 0.5)
+        self.assertEqual(candidate["props"]["quality_level"], 2)
+        self.assertTrue(candidate["props"]["covers_aoi"])
+
+    def test_noaa_rejects_non_ground_and_partial_coverage(self):
+        non_ground = self._feature(pointclasses="1, 7, 9")
+        partial = self._feature()
+        partial["geometry"] = {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [0.6, 0], [0.6, 2], [0, 2], [0, 0]]],
+        }
+        self.assertEqual(
+            _noaa_candidates([non_ground, partial], (0.5, 0.5, 1.5, 1.5)),
+            {},
+        )
+
+    def test_usiei_adds_supported_usgs_ept_fallback(self):
+        records = _parse_wesm_csv(WESM_SAMPLE)
+        feature = self._feature(
+            Title="2024 USGS Missouri Southeast 11 County QL1 Lidar",
+            AlternateTitle="USGS: MO_SE11County_B24",
+            missionid=None,
+            Links=(
+                '{"links":[{"link":"https://s3-us-west-2.amazonaws.com/'
+                'usgs-lidar-public/MO_SE11County_1_B24/ept.json",'
+                '"linktype":"EPT Link"}]}'
+            ),
+            pointspacing="0.35 m (spec)",
+        )
+        candidates = _usiei_candidates(
+            [feature], (0.5, 0.5, 1.5, 1.5), records
+        )
+        candidate = candidates["mose11county1b24"]
+        self.assertEqual(candidate["id"], "MO_SE11County_1_B24")
+        self.assertEqual(candidate["props"]["source_type"], "usiei_ept")
+        self.assertEqual(candidate["props"]["dem_gsd_meters"], "0.5")
+
+    def test_project_metadata_matches_numbered_workunit(self):
+        candidates = {
+            "mose11county1b24": {
+                "id": "MO_SE11County_1_B24",
+                "props": {
+                    "id": "MO_SE11County_1_B24",
+                    "workunit": "MO_SE11County_1_B24",
+                    "metadata_source": "USGS WESM",
+                },
+            }
+        }
+        feature = self._feature(
+            ID=52810,
+            AlternateTitle="USGS: MO_SE11County_B24",
+            RecordOwner="USGS",
+            pointspacing="0.35 m (spec)",
+        )
+        _merge_usiei_metadata(candidates, [feature])
+        props = candidates["mose11county1b24"]["props"]
+        self.assertEqual(props["metadata_source"], "USGS WESM")
+        self.assertEqual(props["usiei_id"], 52810)
+        self.assertEqual(props["usiei_point_spacing_meters"], 0.35)
+
+
 class TerrainStyleTests(unittest.TestCase):
     def test_continuous_profile_overrides_custom_values(self):
         config = {
@@ -301,12 +429,13 @@ class WesmSelectionTests(unittest.TestCase):
             "mose11county1b24",
         )
 
+    @patch("lidar_core.catalogs.usiei._query_usiei_topographic", return_value=[])
     @patch("lidar_core.catalogs.opentopography._opentopography_candidates", return_value={})
     @patch("lidar_core.catalogs.ept._ept_candidates", return_value={})
     @patch("lidar_core.catalogs.usgs._query_tnm_products")
     @patch("lidar_core.catalogs.usgs.ensure_wesm_metadata")
     def test_wesm_first_discovery_finds_non_ept_source_dem(
-        self, mock_wesm, mock_query, _mock_ept, _mock_opentopography
+        self, mock_wesm, mock_query, _mock_ept, _mock_opentopography, _mock_usiei
     ):
         mock_wesm.return_value = self.records
         source_product = {

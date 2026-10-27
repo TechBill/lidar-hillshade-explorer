@@ -565,8 +565,12 @@ class HillshadeExplorerApp:
             resolution = props.get("dem_gsd_meters")
             if resolution:
                 details.append(f"{resolution} m")
+            elif props.get("point_spacing_meters"):
+                details.append(f"{props['point_spacing_meters']} m points")
             source_label = {
                 "ept": "EPT",
+                "noaa_ept": "NOAA EPT",
+                "usiei_ept": "USIEI EPT",
                 "source_dem": "source DEM",
                 "opentopography_dem": "OpenTopography DTM",
                 "lpc": "official LAZ",
