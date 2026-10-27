@@ -12,11 +12,13 @@ from pathlib import Path
 from typing import Any, Dict, Callable, Optional
 
 from lidar_core.aws_operations import (
+    DiscoverySnapshot,
     clip_aws_aoi_to_ground_laz,
     download_lpc_for_aoi,
     download_source_dem_for_aoi,
     validate_laz_point_density,
     list_intersecting_datasets,
+    discover_datasets,
 )
 from lidar_core.dem_generator import run_tin_dem
 from lidar_core.hillshade_engine import generate_classic_hillshade
@@ -54,8 +56,23 @@ class ProcessingOrchestrator:
         Returns:
             List of dataset dictionaries with keys: id, props
         """
+        return self.discover_available_datasets(lat, lon, size_sqmi).datasets
+
+    def discover_available_datasets(
+        self,
+        lat: float,
+        lon: float,
+        size_sqmi: float,
+        log_callback: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+    ) -> DiscoverySnapshot:
+        """Discover once and retain provider diagnostics for later reuse."""
         bbox = self._compute_bbox(lat, lon, size_sqmi)
-        return list_intersecting_datasets(bbox4326=bbox)
+        return discover_datasets(
+            bbox4326=bbox,
+            log=log_callback,
+            cancel_check=cancel_check,
+        )
 
     def run_workflow(
         self,
@@ -66,7 +83,8 @@ class ProcessingOrchestrator:
         progress_callback: Callable[[int, int, str], None],
         cancel_check: Callable[[], bool],
         selected_dataset_rank: int = 0,
-        log_callback: Optional[Callable[[str], None]] = None
+        log_callback: Optional[Callable[[str], None]] = None,
+        discovery_snapshot: Optional[DiscoverySnapshot] = None,
     ) -> Dict[str, Any]:
         """
         Run the complete workflow.
@@ -117,7 +135,11 @@ class ProcessingOrchestrator:
             dem_resolution = 0.0
 
             # Try datasets with smart selection fallback
-            available_datasets = list_intersecting_datasets(bbox4326=bbox, log=log)
+            if discovery_snapshot is not None:
+                available_datasets = discovery_snapshot.datasets
+                log(f"Reusing catalog discovery: {discovery_snapshot.summary}")
+            else:
+                available_datasets = list_intersecting_datasets(bbox4326=bbox, log=log)
             if not available_datasets:
                 raise RuntimeError(
                     "No LiDAR datasets found for this location. "

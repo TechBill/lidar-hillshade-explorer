@@ -9,12 +9,15 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from lidar_core import aws_operations
 from lidar_core.catalogs import ept, noaa, opentopography, usgs, usiei
 from lidar_core.delivery import point_cloud, raster_dem
-from lidar_core import ranking
+from lidar_core import discovery, ranking
 
 
 class CompatibilityFacadeTests(unittest.TestCase):
     def test_catalog_api_is_reexported_from_legacy_module(self):
-        self.assertIs(aws_operations.list_intersecting_datasets, usgs.list_intersecting_datasets)
+        self.assertIs(
+            aws_operations.list_intersecting_datasets,
+            discovery.list_intersecting_datasets,
+        )
         self.assertIs(aws_operations.ensure_aws_index, ept.ensure_aws_index)
         self.assertIs(
             aws_operations._opentopography_candidates,

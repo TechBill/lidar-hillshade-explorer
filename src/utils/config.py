@@ -182,7 +182,8 @@ def get_default_config() -> dict[str, Any]:
             "deterministic": False
         },
         "aws_renewal_days": 30,
-        "wesm_renewal_days": 7
+        "wesm_renewal_days": 7,
+        "catalog_cache_minutes": 30
     }
 
 

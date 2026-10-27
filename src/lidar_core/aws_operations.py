@@ -64,8 +64,13 @@ from lidar_core.catalogs.usgs import (
     _segments_intersect,
     _validate_wesm_records,
     ensure_wesm_metadata,
-    list_intersecting_datasets,
     select_dataset_for_bbox,
+)
+from lidar_core.discovery import (
+    DiscoverySnapshot,
+    ProviderStatus,
+    discover_datasets,
+    list_intersecting_datasets,
 )
 from lidar_core.delivery.point_cloud import (
     MIN_LAZ_SIZE,
@@ -97,6 +102,7 @@ __all__ = [
     "ensure_aws_index",
     "ensure_wesm_metadata",
     "find_pdal",
+    "discover_datasets",
     "list_intersecting_datasets",
     "select_dataset_for_bbox",
     "validate_laz_point_density",

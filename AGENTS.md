@@ -101,8 +101,15 @@ unchanged.
 
 ## Combined USGS/OpenTopography/NOAA/USIEI discovery and delivery
 
-`list_intersecting_datasets()` in `src/lidar_core/catalogs/usgs.py` treats
-the daily WESM CSV as the authoritative work-unit catalog and metadata source.
+`discover_datasets()` in `src/lidar_core/discovery.py` coordinates the
+providers concurrently and returns a reusable `DiscoverySnapshot` containing
+the ranked candidates plus provider-specific status. Manual selection runs
+this outside the Tk thread and passes the same snapshot into processing; do
+not reintroduce a second discovery call after the user chooses a result.
+`list_intersecting_datasets()` remains the compatibility list-only API.
+
+The daily WESM CSV remains the authoritative USGS work-unit catalog and
+metadata source.
 The CSV has no geometry, while the WESM GeoPackage is several gigabytes, so the
 app uses the official TNM Access products API as the lightweight spatial query
 for intersecting OPR/source-DEM and LPC tiles. Results are joined back to WESM
@@ -136,6 +143,12 @@ candidates. Project-level USIEI records enrich matching WESM work units under
 project alias when deduplicating numbered work units (for example,
 `MO_SE11County_B24` and `MO_SE11County_1_B24`). USGS delivery remains preferred
 when the same survey is available from both USGS and NOAA.
+
+OpenTopography and USIEI AOI responses use the short-lived JSON cache in
+`catalogs/cache.py` (30 minutes by default, with a recent stale copy permitted
+during an outage). Keep HTTP/GDAL calls bounded. A provider failure or timeout
+must be reported in the snapshot and must not discard successful results from
+other providers.
 
 ## GDAL/PROJ/rasterio environment — this took three rounds to get right
 
@@ -277,6 +290,12 @@ within the dialog bounds without needing to drive the whole app.
 `tests/test_selection.py` (`python3 -m unittest`) covers dataset
 catalog/ranking logic and `utils.config` — no
 GUI or GDAL/PDAL dependency, safe to run anywhere.
+
+Live catalog checks are deliberately opt-in and separate from the fast suite:
+
+```bash
+LHE_RUN_NETWORK_TESTS=1 venv/bin/python3 -m unittest discover -s tests/integration -v
+```
 
 To sanity-check the *built* app actually launches:
 

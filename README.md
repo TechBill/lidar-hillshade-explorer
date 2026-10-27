@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 6.3.5
+# LiDAR Hillshade Explorer 6.5
 
 LiDAR Hillshade Explorer is a lightweight desktop app for exploring terrain using LiDAR elevation data.  
 Enter coordinates, click one button, and the app downloads available LiDAR, processes it, generates a hillshade image, and opens an interactive viewer.
@@ -7,7 +7,19 @@ This tool is designed for research and visualization. It is **not survey-grade G
 
 ---
 
-## What's New in 6.3.5
+## What's New in 6.5
+
+- Manual catalog discovery now runs outside the Tk interface thread, keeping
+  the app responsive while providers are searched.
+- The manual-selection result is reused by processing instead of performing
+  the same catalog search twice.
+- USGS, AWS EPT, NOAA/USIEI, and OpenTopography searches run independently;
+  one unavailable provider no longer prevents results from the others.
+- Added provider-specific status reporting, bounded HTTP/GDAL requests, and a
+  short metadata cache for NOAA/USIEI and OpenTopography results.
+- Added opt-in live-network integration checks separately from fast unit tests.
+
+### Catalog additions carried forward from 6.3.5
 
 - Added NOAA Coastal LiDAR discovery through official USIEI footprints and
   direct public NOAA EPT delivery. Normal terrain mode admits only completed,
@@ -196,7 +208,7 @@ Because this app is distributed as a downloadable app (not from the official App
 
 ### macOS (Apple Silicon)
 
-The current 6.3.5 macOS release is built for Apple Silicon and runs natively on
+The current 6.5 macOS release is built for Apple Silicon and runs natively on
 M1, M2, M3, M4, and newer ARM64 Macs. It does not require Rosetta. An Intel Mac
 requires a separately built x86_64 release.
 
@@ -219,9 +231,9 @@ Only override this protection for a copy obtained from the project release you
 trust. The warning is expected for this unnotarized build, but a warning by
 itself is not proof that an arbitrary download is safe.
 
-### Install the macOS 6.3.5 Release
+### Install the macOS 6.5 Release
 
-1. Extract `LiDAR-Hillshade-6.3.5-Mac-ARM64.zip`.
+1. Extract `LiDAR-Hillshade-6.5-Mac-ARM64.zip`.
 2. Drag **LiDAR Hillshade Explorer.app** into **Applications**.
 3. Open the app. If macOS blocks the first launch, follow the steps above.
 
@@ -427,7 +439,7 @@ This copies `pdal`/`gdaldem` binaries, traces their DLL/dylib dependencies, and 
 #### Step 3: Build the Application
 
 ```bash
-pyinstaller lidar_explorer.spec --noconfirm
+venv/bin/python3 -m PyInstaller lidar_explorer.spec --noconfirm
 ```
 
 The spec file automatically:
@@ -437,6 +449,18 @@ The spec file automatically:
 - **macOS**: Builds a standalone `.app` bundle (current ARM64 build: ~488 MB)
 
 #### Step 4: Test the Build
+
+Run the fast offline suite:
+
+```bash
+venv/bin/python3 -m unittest discover -s tests -v
+```
+
+Optionally verify the current public catalog services over the network:
+
+```bash
+LHE_RUN_NETWORK_TESTS=1 venv/bin/python3 -m unittest discover -s tests/integration -v
+```
 
 **macOS:**
 ```bash
@@ -487,7 +511,7 @@ Create a ZIP:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-6.3.5-Mac-ARM64.zip"
+  "LiDAR-Hillshade-6.5-Mac-ARM64.zip"
 ```
 
 Or create a DMG:
@@ -501,7 +525,7 @@ create-dmg \
   --window-size 600 400 \
   --icon-size 100 \
   --app-drop-link 450 185 \
-  "LiDAR-Hillshade-Explorer-6.3.5-macOS-arm64.dmg" \
+  "LiDAR-Hillshade-Explorer-6.5-macOS-arm64.dmg" \
   "dist/LiDAR Hillshade Explorer.app"
 ```
 

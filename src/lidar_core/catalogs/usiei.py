@@ -16,6 +16,11 @@ except ImportError:
     HAS_CERTIFI = False
 
 from lidar_core.catalogs.usgs import LogFunc, _geometry_covers_bbox, _log
+from lidar_core.catalogs.cache import (
+    load_catalog_cache,
+    load_stale_catalog_cache,
+    save_catalog_cache,
+)
 from lidar_core.ranking import (
     _enrich_dataset_properties,
     _metadata_for_dataset,
@@ -47,7 +52,7 @@ def _ssl_context() -> ssl.SSLContext:
 def _fetch_json_url(url: str, timeout: int = 30) -> Dict[str, Any]:
     request = Request(
         url,
-        headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.5"},
+        headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5"},
     )
     with urlopen(request, timeout=timeout, context=_ssl_context()) as response:
         payload = json.load(response)
@@ -59,8 +64,15 @@ def _fetch_json_url(url: str, timeout: int = 30) -> Dict[str, Any]:
 def _query_usiei_topographic(
     bbox4326: Tuple[float, float, float, float],
     log: LogFunc = None,
+    use_cache: bool = True,
 ) -> List[Dict[str, Any]]:
     """Query USIEI's topographic-lidar layer for an AOI."""
+    if use_cache:
+        cached = load_catalog_cache("usiei", bbox4326)
+        if isinstance(cached, list):
+            _log(log, f"USIEI: using {len(cached)} cached topographic record(s)")
+            return cached
+
     bbox_text = ",".join(f"{float(value):.10f}" for value in bbox4326)
     query = urlencode(
         {
@@ -76,7 +88,14 @@ def _query_usiei_topographic(
             "geometryPrecision": 7,
         }
     )
-    payload = _fetch_json_url(f"{USIEI_TOPO_QUERY_URL}?{query}", timeout=45)
+    try:
+        payload = _fetch_json_url(f"{USIEI_TOPO_QUERY_URL}?{query}", timeout=25)
+    except Exception:
+        stale = load_stale_catalog_cache("usiei", bbox4326) if use_cache else None
+        if isinstance(stale, list):
+            _log(log, f"USIEI unavailable; using {len(stale)} recent cached record(s)")
+            return stale
+        raise
     error = payload.get("error")
     if isinstance(error, dict):
         details = error.get("details") or []
@@ -87,6 +106,8 @@ def _query_usiei_topographic(
         if isinstance(feature, dict)
     ]
     _log(log, f"USIEI found {len(features)} intersecting topographic record(s)")
+    if use_cache:
+        save_catalog_cache("usiei", bbox4326, features)
     return features
 
 

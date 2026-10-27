@@ -28,6 +28,7 @@ from lidar_core.catalogs.usiei import (  # noqa: E402
     _usiei_links,
 )
 from processing import ProcessingOrchestrator  # noqa: E402
+from lidar_core.discovery import DiscoverySnapshot, discover_datasets  # noqa: E402
 from utils.config import (  # noqa: E402
     TERRAIN_STYLE_CONTINUOUS,
     TERRAIN_STYLE_CUSTOM,
@@ -126,6 +127,70 @@ class CoverageGeometryTests(unittest.TestCase):
 
 
 class SmartSelectionTests(unittest.TestCase):
+    @patch("lidar_core.discovery.opentopography._opentopography_candidates")
+    @patch("lidar_core.discovery._coastal_candidates", return_value=([], {}, {}))
+    @patch("lidar_core.discovery.ept._ept_candidates", side_effect=RuntimeError("offline"))
+    @patch("lidar_core.discovery._usgs_candidates", return_value={})
+    @patch("lidar_core.discovery.usgs.ensure_wesm_metadata", return_value={})
+    def test_one_failed_provider_preserves_other_results(
+        self,
+        _mock_wesm,
+        _mock_usgs,
+        _mock_ept,
+        _mock_coastal,
+        mock_opentopography,
+    ):
+        candidate = {
+            "id": "public_dtm",
+            "props": {
+                "id": "public_dtm",
+                "source_type": "opentopography_dem",
+                "covers_aoi": True,
+                "dem_gsd_meters": 0.5,
+            },
+        }
+        mock_opentopography.return_value = {"opentopography:public": candidate}
+
+        snapshot = discover_datasets((0.0, 0.0, 1.0, 1.0))
+
+        self.assertEqual(snapshot.datasets, [candidate])
+        aws_status = next(
+            status for status in snapshot.providers if status.name == "AWS EPT"
+        )
+        self.assertEqual(aws_status.state, "unavailable")
+
+    def test_manual_snapshot_is_reused_without_second_catalog_search(self):
+        candidate = {
+            "id": "chosen_source_dem",
+            "props": {"id": "chosen_source_dem", "source_type": "source_dem"},
+        }
+        snapshot = DiscoverySnapshot(
+            bbox4326=(-103.81, 43.79, -103.79, 43.81),
+            datasets=[candidate],
+        )
+        with (
+            patch("processing.list_intersecting_datasets") as mock_discovery,
+            patch(
+                "processing.download_source_dem_for_aoi",
+                return_value=(Path("source_dem.tif"), candidate["props"], 6342, 0.25),
+            ),
+            patch(
+                "processing.generate_classic_hillshade",
+                return_value=Path("hillshade.tif"),
+            ),
+        ):
+            ProcessingOrchestrator().run_workflow(
+                lat=43.8,
+                lon=-103.8,
+                size_sqmi=0.25,
+                smart_select=False,
+                progress_callback=lambda *_args: None,
+                cancel_check=lambda: False,
+                discovery_snapshot=snapshot,
+            )
+
+        mock_discovery.assert_not_called()
+
     def test_smart_selection_tries_every_available_dataset(self):
         datasets = [
             {"id": f"dataset_{rank}", "props": {}}
@@ -246,7 +311,9 @@ class AdditionalCatalogTests(unittest.TestCase):
     @patch("lidar_core.catalogs.usiei._fetch_json_url")
     def test_usiei_query_uses_bbox_envelope(self, mock_fetch):
         mock_fetch.return_value = {"type": "FeatureCollection", "features": []}
-        records = _query_usiei_topographic((-77.1, 38.2, -76.9, 38.4))
+        records = _query_usiei_topographic(
+            (-77.1, 38.2, -76.9, 38.4), use_cache=False
+        )
         self.assertEqual(records, [])
         url = mock_fetch.call_args.args[0]
         self.assertIn("geometry=-77.1000000000%2C38.2000000000%2C-76.9000000000%2C38.4000000000", url)
@@ -520,7 +587,9 @@ class WesmSelectionTests(unittest.TestCase):
         }
         mock_fetch.side_effect = [catalog, collection, item]
 
-        candidates = _opentopography_candidates((0.5, 0.5, 1.5, 1.5))
+        candidates = _opentopography_candidates(
+            (0.5, 0.5, 1.5, 1.5), use_cache=False
+        )
 
         candidate = candidates["opentopography:ar23_moran"]
         self.assertEqual(candidate["id"], "AR23_Moran")

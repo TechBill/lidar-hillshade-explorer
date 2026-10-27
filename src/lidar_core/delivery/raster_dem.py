@@ -44,7 +44,15 @@ def download_source_dem_for_aoi(
     )
     _log(log, f"=== Preparing {source_label} ===")
     _log(log, f"Dataset: {props.get('workunit') or dataset.get('id')}")
-    with tempfile.TemporaryDirectory(prefix="source_dem_", dir=dem_dir) as temp_dir:
+    gdal_options = {
+        "GDAL_HTTP_CONNECTTIMEOUT": "10",
+        "GDAL_HTTP_TIMEOUT": "25",
+        "GDAL_HTTP_MAX_RETRY": "2",
+        "GDAL_HTTP_RETRY_DELAY": "1",
+    }
+    with rasterio.Env(**gdal_options), tempfile.TemporaryDirectory(
+        prefix="source_dem_", dir=dem_dir
+    ) as temp_dir:
         if is_opentopography:
             _log(log, "Reading public cloud-optimized DTM tiles...")
             sources = [

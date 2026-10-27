@@ -82,7 +82,7 @@ def ensure_aws_index(log: LogFunc = None) -> Dict[str, Any]:
         else:
             ssl_context = ssl.create_default_context()
 
-        with urlopen(AWS_INDEX_URL, timeout=30, context=ssl_context) as resp:
+        with urlopen(AWS_INDEX_URL, timeout=25, context=ssl_context) as resp:
             data = resp.read().decode("utf-8")
 
         with index_path.open("w", encoding="utf-8") as f:

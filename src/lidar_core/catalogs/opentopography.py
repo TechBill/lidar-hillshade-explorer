@@ -6,7 +6,7 @@ import json
 import math
 import re
 import ssl
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -23,17 +23,22 @@ from lidar_core.catalogs.usgs import (
     _log,
     _products_cover_bbox,
 )
+from lidar_core.catalogs.cache import (
+    load_catalog_cache,
+    load_stale_catalog_cache,
+    save_catalog_cache,
+)
 
 OPENTOPO_CATALOG_URL = "https://portal.opentopography.org/API/otCatalog"
 OPENTOPO_STAC_BASE_URL = "https://portal.opentopography.org/stac"
 OPENTOPO_DATA_HOST = "opentopography.s3.sdsc.edu"
 
 
-def _fetch_json_url(url: str, timeout: int = 45) -> Dict[str, Any]:
+def _fetch_json_url(url: str, timeout: int = 25) -> Dict[str, Any]:
     """Fetch a public JSON document with the app's normal TLS handling."""
     request = Request(
         url,
-        headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.5"},
+        headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5"},
     )
     if HAS_CERTIFI:
         ssl_context = ssl.create_default_context(cafile=certifi.where())
@@ -97,7 +102,12 @@ def _remote_raster_resolution(url: str) -> float:
     """Read only a public COG's header and return its native pixel size."""
     import rasterio
 
-    with rasterio.Env(GDAL_HTTP_MAX_RETRY="2", GDAL_HTTP_RETRY_DELAY="1"):
+    with rasterio.Env(
+        GDAL_HTTP_CONNECTTIMEOUT="10",
+        GDAL_HTTP_TIMEOUT="25",
+        GDAL_HTTP_MAX_RETRY="2",
+        GDAL_HTTP_RETRY_DELAY="1",
+    ):
         with rasterio.open(url) as source:
             xres, yres = source.res
     resolution = (abs(float(xres)) + abs(float(yres))) / 2.0
@@ -146,8 +156,15 @@ def _opentopography_item_for_collection(
 def _opentopography_candidates(
     bbox4326: Tuple[float, float, float, float],
     log: LogFunc = None,
+    use_cache: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
     """Discover public, localized lidar DTMs from OpenTopography's catalog."""
+    if use_cache:
+        cached = load_catalog_cache("opentopography", bbox4326)
+        if isinstance(cached, dict):
+            _log(log, "OpenTopography: using cached catalog results")
+            return cached
+
     minx, miny, maxx, maxy = bbox4326
     query = urlencode(
         {
@@ -161,7 +178,14 @@ def _opentopography_candidates(
             "include_federated": "false",
         }
     )
-    payload = _fetch_json_url(f"{OPENTOPO_CATALOG_URL}?{query}")
+    try:
+        payload = _fetch_json_url(f"{OPENTOPO_CATALOG_URL}?{query}")
+    except Exception:
+        stale = load_stale_catalog_cache("opentopography", bbox4326) if use_cache else None
+        if isinstance(stale, dict):
+            _log(log, "OpenTopography unavailable; using recent cached results")
+            return stale
+        raise
     results: Dict[str, Dict[str, Any]] = {}
 
     for wrapper in payload.get("Datasets", []):
@@ -285,4 +309,6 @@ def _opentopography_candidates(
         }
 
     _log(log, f"OpenTopography found {len(results)} public high-resolution DTM(s)")
+    if use_cache:
+        save_catalog_cache("opentopography", bbox4326, results)
     return results

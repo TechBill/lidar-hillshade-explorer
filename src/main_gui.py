@@ -500,7 +500,11 @@ class HillshadeExplorerApp:
         except Exception as e:
             messagebox.showerror("Error", f"Could not paste coordinates: {e}", parent=self.root)
 
-    def _show_dataset_selection_dialog(self, datasets: list[dict]) -> int | None:
+    def _show_dataset_selection_dialog(
+        self,
+        datasets: list[dict],
+        discovery_summary: str = "",
+    ) -> int | None:
         """
         Show dialog for user to select from available datasets.
 
@@ -538,6 +542,15 @@ class HillshadeExplorerApp:
             text="Multiple LiDAR datasets found. Please select one:",
             font=("", 10, "bold")
         ).pack(pady=(10, 5), padx=10)
+
+        if discovery_summary:
+            ttk.Label(
+                dialog,
+                text=discovery_summary,
+                foreground="#666666",
+                wraplength=560,
+                justify=tk.LEFT,
+            ).pack(fill=tk.X, padx=10, pady=(0, 4))
 
         # Listbox with scrollbar
         frame = ttk.Frame(dialog)
@@ -669,57 +682,125 @@ class HillshadeExplorerApp:
         # Get smart selection preference
         smart_select = self.smart_select_var.get()
 
-        # If smart selection is OFF, let user choose from available datasets
-        selected_dataset_rank = 0
-        if not smart_select:
-            try:
-                datasets = self.orchestrator.get_available_datasets(lat, lon, size_sqmi)
-
-                if not datasets:
-                    messagebox.showerror(
-                        "No Data Available",
-                        "No LiDAR data available for this location.\n\n"
-                        "Try a different area or check that you're within the United States.",
-                        parent=self.root
-                    )
-                    return
-
-                if len(datasets) > 1:
-                    # Show selection dialog
-                    selected_dataset_rank = self._show_dataset_selection_dialog(datasets)
-                    if selected_dataset_rank is None:
-                        # User cancelled
-                        return
-            except Exception as e:
-                messagebox.showerror(
-                    "Error",
-                    f"Failed to find datasets:\n\n{e}",
-                    parent=self.root
-                )
-                return
-
         # Lock UI
         self.is_processing = True
         self.generate_btn.config(state=tk.DISABLED)
 
-        # Create progress dialog
+        if smart_select:
+            self._start_processing_worker(lat, lon, size_sqmi, True, 0)
+            return
+
+        # Manual discovery must not block Tk. Its completed snapshot is passed
+        # directly into processing after the user chooses a result.
+        self.progress_dialog = ProgressDialog(
+            self.root,
+            title="Finding LiDAR Data",
+            initial_step=1,
+            total_steps=1,
+            initial_message="Searching USGS, AWS, NOAA, USIEI, and OpenTopography...",
+        )
+        self.worker_thread = threading.Thread(
+            target=self._worker_discover,
+            args=(lat, lon, size_sqmi),
+            daemon=True,
+        )
+        self.worker_thread.start()
+
+    def _worker_discover(self, lat: float, lon: float, size_sqmi: float):
+        """Find manual-selection candidates without blocking the Tk thread."""
+        dialog = self.progress_dialog
+        try:
+            dialog.start()
+            self.log_messages = []
+            snapshot = self.orchestrator.discover_available_datasets(
+                lat,
+                lon,
+                size_sqmi,
+                log_callback=self._log_callback,
+                cancel_check=dialog.is_cancelled,
+            )
+            if dialog.is_cancelled():
+                self.root.after(0, self._on_processing_cancelled)
+                return
+            self.root.after(
+                0,
+                lambda result=snapshot: self._on_discovery_complete(
+                    lat, lon, size_sqmi, result
+                ),
+            )
+        except Exception as exc:
+            if dialog.is_cancelled():
+                self.root.after(0, self._on_processing_cancelled)
+            else:
+                self.root.after(0, lambda error=exc: self._on_processing_error(error))
+
+    def _on_discovery_complete(self, lat, lon, size_sqmi, snapshot):
+        """Show manual choices and launch processing with the same results."""
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+        if not snapshot.datasets:
+            self.is_processing = False
+            self.generate_btn.config(state=tk.NORMAL)
+            messagebox.showerror(
+                "No Data Available",
+                "No LiDAR data available for this location.\n\n"
+                f"Catalog status: {snapshot.summary}",
+                parent=self.root,
+            )
+            return
+        selected_rank = 0
+        if len(snapshot.datasets) > 1:
+            selected_rank = self._show_dataset_selection_dialog(
+                snapshot.datasets, snapshot.summary
+            )
+            if selected_rank is None:
+                self.is_processing = False
+                self.generate_btn.config(state=tk.NORMAL)
+                return
+        self._start_processing_worker(
+            lat, lon, size_sqmi, False, selected_rank, snapshot
+        )
+
+    def _start_processing_worker(
+        self,
+        lat,
+        lon,
+        size_sqmi,
+        smart_select,
+        selected_dataset_rank,
+        discovery_snapshot=None,
+    ):
         self.progress_dialog = ProgressDialog(
             self.root,
             title="Generating Hillshade",
             initial_step=1,
             total_steps=4,
-            initial_message="Finding LiDAR datasets..."
+            initial_message="Preparing selected LiDAR dataset...",
         )
-
-        # Start processing in background thread
         self.worker_thread = threading.Thread(
             target=self._worker_process,
-            args=(lat, lon, size_sqmi, smart_select, selected_dataset_rank),
-            daemon=True
+            args=(
+                lat,
+                lon,
+                size_sqmi,
+                smart_select,
+                selected_dataset_rank,
+                discovery_snapshot,
+            ),
+            daemon=True,
         )
         self.worker_thread.start()
 
-    def _worker_process(self, lat: float, lon: float, size_sqmi: float, smart_select: bool, selected_dataset_rank: int = 0):
+    def _worker_process(
+        self,
+        lat: float,
+        lon: float,
+        size_sqmi: float,
+        smart_select: bool,
+        selected_dataset_rank: int = 0,
+        discovery_snapshot=None,
+    ):
         """
         Background worker thread for processing.
 
@@ -746,7 +827,8 @@ class HillshadeExplorerApp:
                 progress_callback=self._progress_callback,
                 cancel_check=lambda: self.progress_dialog.is_cancelled(),
                 selected_dataset_rank=selected_dataset_rank,
-                log_callback=self._log_callback
+                log_callback=self._log_callback,
+                discovery_snapshot=discovery_snapshot,
             )
 
             # Check if cancelled

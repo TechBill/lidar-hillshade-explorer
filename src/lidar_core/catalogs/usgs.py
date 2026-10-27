@@ -103,7 +103,7 @@ def ensure_wesm_metadata(log: LogFunc = None) -> Dict[str, Dict[str, str]]:
             ssl_context = ssl.create_default_context(cafile=certifi.where())
         else:
             ssl_context = ssl.create_default_context()
-        with urlopen(WESM_URL, timeout=30, context=ssl_context) as response:
+        with urlopen(WESM_URL, timeout=25, context=ssl_context) as response:
             csv_text = response.read().decode("utf-8-sig")
 
         records = _parse_wesm_csv(csv_text)
@@ -338,13 +338,13 @@ def _query_tnm_products(
         )
         request = Request(
             f"{TNM_PRODUCTS_URL}?{query}",
-            headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.5"},
+            headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5"},
         )
         if HAS_CERTIFI:
             ssl_context = ssl.create_default_context(cafile=certifi.where())
         else:
             ssl_context = ssl.create_default_context()
-        with urlopen(request, timeout=45, context=ssl_context) as response:
+        with urlopen(request, timeout=25, context=ssl_context) as response:
             payload = json.load(response)
 
         errors = payload.get("errors") or []
@@ -495,7 +495,7 @@ def _geometry_covers_bbox(
     return True
 
 
-def list_intersecting_datasets(
+def _list_intersecting_datasets_sequential(
     bbox4326: Tuple[float, float, float, float],
     log: LogFunc = None,
     ranking_mode: Optional[str] = None,
@@ -666,6 +666,17 @@ def list_intersecting_datasets(
         f"ranking mode: {'Best Detail' if ranking_mode == 'best_detail' else 'Newest Survey'}",
     )
     return result
+
+
+def list_intersecting_datasets(
+    bbox4326: Tuple[float, float, float, float],
+    log: LogFunc = None,
+    ranking_mode: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Compatibility wrapper for the concurrent discovery coordinator."""
+    from lidar_core.discovery import list_intersecting_datasets as discover_list
+
+    return discover_list(bbox4326, log=log, ranking_mode=ranking_mode)
 
 
 def select_dataset_for_bbox(
