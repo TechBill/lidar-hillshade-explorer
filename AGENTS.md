@@ -291,6 +291,11 @@ within the dialog bounds without needing to drive the whole app.
 catalog/ranking logic and `utils.config` — no
 GUI or GDAL/PDAL dependency, safe to run anywhere.
 
+The Hillshade Viewer binds wheel routing at its own window level so nested
+sidebar controls can scroll the overflowing control canvas. Preserve the
+pointer/ancestry check: wheel events over the image canvas must continue to
+zoom, and a sidebar that does not overflow must not consume the event.
+
 Live catalog checks are deliberately opt-in and separate from the fast suite:
 
 ```bash

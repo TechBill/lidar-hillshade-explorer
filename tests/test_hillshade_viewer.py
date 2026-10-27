@@ -96,6 +96,50 @@ class ViewerWindowSizeTests(unittest.TestCase):
         self.assertEqual(viewer_window_size(1920, 1080, 650), (1200, 800))
 
 
+class ViewerSidebarScrollingTests(unittest.TestCase):
+    def setUp(self):
+        self.viewer = HillshadeViewer.__new__(HillshadeViewer)
+        self.viewer.sidebar_frame = SimpleNamespace(master=None)
+        self.scroll_calls = []
+        self.viewer.sidebar_canvas = SimpleNamespace(
+            yview=lambda: (0.0, 0.7),
+            yview_scroll=lambda *args: self.scroll_calls.append(args),
+        )
+
+    def event(self, *, delta=0, num=None, in_sidebar=True):
+        widget = SimpleNamespace(
+            master=self.viewer.sidebar_frame if in_sidebar else None
+        )
+        return SimpleNamespace(widget=widget, delta=delta, num=num)
+
+    def test_mouse_wheel_scrolls_over_nested_sidebar_controls(self):
+        self.assertEqual(
+            self.viewer._on_sidebar_mousewheel(self.event(delta=-120)), "break"
+        )
+        self.assertEqual(
+            self.viewer._on_sidebar_mousewheel(self.event(delta=120)), "break"
+        )
+        self.assertEqual(self.scroll_calls, [(1, "units"), (-1, "units")])
+
+    def test_linux_wheel_buttons_scroll_sidebar(self):
+        self.viewer._on_sidebar_mousewheel(self.event(num=4))
+        self.viewer._on_sidebar_mousewheel(self.event(num=5))
+        self.assertEqual(self.scroll_calls, [(-1, "units"), (1, "units")])
+
+    def test_does_not_intercept_image_canvas_wheel(self):
+        result = self.viewer._on_sidebar_mousewheel(
+            self.event(delta=-120, in_sidebar=False)
+        )
+        self.assertIsNone(result)
+        self.assertEqual(self.scroll_calls, [])
+
+    def test_does_not_consume_wheel_when_sidebar_does_not_overflow(self):
+        self.viewer.sidebar_canvas.yview = lambda: (0.0, 1.0)
+        result = self.viewer._on_sidebar_mousewheel(self.event(delta=-120))
+        self.assertIsNone(result)
+        self.assertEqual(self.scroll_calls, [])
+
+
 class ViewerNoDataRenderingTests(unittest.TestCase):
     def test_opaque_preference_matches_kmz_fill_without_changing_geotiff(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -128,6 +128,7 @@ class HillshadeViewer:
         # Scrollable left panel keeps metadata and styling controls accessible
         # on shorter displays and when Custom style controls are expanded.
         sidebar = tk.Frame(paned, bd=1, relief="groove", width=315)
+        self.sidebar_frame = sidebar
         paned.add(sidebar, minsize=295, width=315)
 
         self.sidebar_canvas = tk.Canvas(
@@ -157,6 +158,12 @@ class HillshadeViewer:
                 sidebar_window, width=event.width
             ),
         )
+        # Bind at the viewer-window level so wheel events from labels, entries,
+        # buttons, and other nested sidebar controls all reach one handler.
+        # Events over the image canvas continue to use its zoom handler.
+        self.window.bind("<MouseWheel>", self._on_sidebar_mousewheel, add="+")
+        self.window.bind("<Button-4>", self._on_sidebar_mousewheel, add="+")
+        self.window.bind("<Button-5>", self._on_sidebar_mousewheel, add="+")
 
         # LiDAR data information at top
         info_frame = tk.Frame(left_panel)
@@ -1465,6 +1472,35 @@ class HillshadeViewer:
         if hasattr(self, '_resize_after_id'):
             self.window.after_cancel(self._resize_after_id)
         self._resize_after_id = self.window.after(100, self.redraw)
+
+    def _on_sidebar_mousewheel(self, event):
+        """Scroll an overflowing control sidebar when the pointer is over it."""
+        widget = getattr(event, "widget", None)
+        while widget is not None:
+            if widget is self.sidebar_frame:
+                break
+            widget = getattr(widget, "master", None)
+        else:
+            return None
+
+        try:
+            first, last = self.sidebar_canvas.yview()
+        except (AttributeError, tk.TclError, ValueError):
+            return None
+        if first <= 0.0 and last >= 1.0:
+            return None
+
+        if getattr(event, "num", None) == 4:
+            units = -1
+        elif getattr(event, "num", None) == 5:
+            units = 1
+        else:
+            delta = getattr(event, "delta", 0)
+            if not delta:
+                return None
+            units = -1 if delta > 0 else 1
+        self.sidebar_canvas.yview_scroll(units, "units")
+        return "break"
 
     # ============================================================================
     # Zoom & Pan

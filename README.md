@@ -18,6 +18,8 @@ This tool is designed for research and visualization. It is **not survey-grade G
 - Added provider-specific status reporting, bounded HTTP/GDAL requests, and a
   short metadata cache for NOAA/USIEI and OpenTopography results.
 - Added opt-in live-network integration checks separately from fast unit tests.
+- The Hillshade Viewer control sidebar now supports mouse-wheel scrolling when
+  its controls overflow, while the wheel continues to zoom over the image.
 
 ### Catalog additions carried forward from 6.3.5
 
