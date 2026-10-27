@@ -21,6 +21,10 @@ Pro, iMac, Mac mini, Mac Studio, and Mac Pro systems. It runs natively on M1,
 M2, M3, M4, and newer Apple Silicon chips. Intel Macs require a separately
 built x86_64 version.
 
+The main form opens at a display-aware size. If the window is shortened or the
+screen cannot show the complete form, use its vertical scrollbar or mouse wheel
+to reach the Generate and Advanced Settings buttons.
+
 This free, open-source hobby release is **ad-hoc signed but not Apple-notarized**.
 Apple requires a paid Developer Program membership for Developer ID signing and
 notarization, so macOS may show **Move to Trash** or a message like:

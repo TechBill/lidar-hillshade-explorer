@@ -23,6 +23,9 @@ This tool is designed for research and visualization. It is **not survey-grade G
   former domain-specific wording from every preset name.
 - Added **Combined Detail** to the preset list using z=2.0, altitude=25°,
   azimuth=315°, and GDAL Combined lighting.
+- Increased the main window's default height and made the complete form
+  vertically scrollable, keeping Generate and Advanced Settings reachable on
+  smaller laptop displays and after resizing the window.
 
 ---
 

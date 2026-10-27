@@ -64,9 +64,40 @@ class HillshadeExplorerApp:
 
     def _build_ui(self):
         """Build the main UI layout."""
-        # Main container with padding
-        main_frame = ttk.Frame(self.root, padding=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # Keep every control reachable when the window is shorter than its
+        # requested content, such as on a laptop display or after resizing.
+        scroll_container = ttk.Frame(self.root)
+        scroll_container.pack(fill=tk.BOTH, expand=True)
+
+        frame_background = (
+            ttk.Style(self.root).lookup("TFrame", "background")
+            or self.root.cget("background")
+        )
+        self.main_canvas = tk.Canvas(
+            scroll_container,
+            highlightthickness=0,
+            background=frame_background,
+        )
+        self.main_scrollbar = ttk.Scrollbar(
+            scroll_container,
+            orient=tk.VERTICAL,
+            command=self.main_canvas.yview,
+        )
+        self.main_canvas.configure(yscrollcommand=self.main_scrollbar.set)
+        self.main_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.main_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        main_frame = ttk.Frame(self.main_canvas, padding=20)
+        self.main_content = main_frame
+        self._main_canvas_window = self.main_canvas.create_window(
+            (0, 0), window=main_frame, anchor=tk.NW
+        )
+
+        main_frame.bind("<Configure>", self._on_main_content_configure)
+        self.main_canvas.bind("<Configure>", self._on_main_canvas_configure)
+        self.root.bind("<MouseWheel>", self._on_main_mousewheel, add="+")
+        self.root.bind("<Button-4>", self._on_main_mousewheel, add="+")
+        self.root.bind("<Button-5>", self._on_main_mousewheel, add="+")
 
         # Donation section
         donation_frame = ttk.Frame(main_frame)
@@ -269,15 +300,43 @@ class HillshadeExplorerApp:
         self.generate_btn.pack(pady=20)
 
         # Advanced Settings button (bottom left)
-        settings_btn = ttk.Button(
+        self.settings_btn = ttk.Button(
             main_frame,
             text="Advanced Settings",
             command=self._show_advanced_settings
         )
-        settings_btn.pack(side=tk.LEFT, pady=(0, 0))
+        self.settings_btn.pack(anchor=tk.W, pady=(0, 10))
 
         self.size_var.trace_add("write", self._on_area_size_changed)
         self._on_area_size_changed()
+
+    def _on_main_content_configure(self, _event=None):
+        """Update the scroll range when the main form's requested size changes."""
+        self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+
+    def _on_main_canvas_configure(self, event):
+        """Make the form follow the available width without horizontal scrolling."""
+        self.main_canvas.itemconfigure(self._main_canvas_window, width=event.width)
+
+    def _on_main_mousewheel(self, event):
+        """Scroll the main form while the event belongs to the main window."""
+        try:
+            if event.widget.winfo_toplevel() is not self.root:
+                return None
+        except (AttributeError, tk.TclError):
+            return None
+
+        if getattr(event, "num", None) == 4:
+            units = -1
+        elif getattr(event, "num", None) == 5:
+            units = 1
+        else:
+            delta = getattr(event, "delta", 0)
+            if not delta:
+                return None
+            units = -1 if delta > 0 else 1
+        self.main_canvas.yview_scroll(units, "units")
+        return "break"
 
     def _on_area_size_changed(self, *args):
         """Enable or disable the custom area size entry."""

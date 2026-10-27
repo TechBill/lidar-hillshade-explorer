@@ -81,6 +81,13 @@ APP_VERSION = "6.3.1"
 WINDOWS_APP_ID = "com.techbill.lidar-hillshade-explorer"
 
 
+def main_window_size(screen_width: int, screen_height: int) -> tuple[int, int]:
+    """Return a useful default size that remains inside the visible display."""
+    available_width = max(360, int(screen_width) - 40)
+    available_height = max(360, int(screen_height) - 100)
+    return min(520, available_width), min(840, available_height)
+
+
 def main():
     """Launch the LiDAR Hillshade Explorer application"""
     # Give Windows a stable application identity before creating any windows.
@@ -124,14 +131,14 @@ def main():
         pass  # Icon not critical
 
     # Center window on screen
-    window_width = 500
-    window_height = 760
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
+    window_width, window_height = main_window_size(screen_width, screen_height)
     center_x = int((screen_width - window_width) / 2)
     center_y = int((screen_height - window_height) / 2)
     root.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
 
+    root.minsize(min(440, window_width), min(480, window_height))
     root.resizable(True, True)
 
     # Initialize the application
