@@ -269,11 +269,18 @@ def generate_archaeology_hillshade(
 
 
 def custom_hillshade_path(dem_path: Path, z_factor: float, altitude: float,
-                           azimuth: float, multidirectional: bool) -> Path:
+                           azimuth: float, multidirectional: bool,
+                           combined: bool = False) -> Path:
     """Return the output path for a custom hillshade with the given parameters."""
+    if multidirectional and combined:
+        raise ValueError(
+            "Multidirectional and Combined cannot be used at the same time"
+        )
     hillshades_dir = get_output_dir() / "hillshades"
     if multidirectional:
         params = f"z{z_factor:.1f}_alt{altitude:.0f}_multi"
+    elif combined:
+        params = f"z{z_factor:.1f}_alt{altitude:.0f}_az{azimuth:.0f}_combined"
     else:
         params = f"z{z_factor:.1f}_alt{altitude:.0f}_az{azimuth:.0f}"
     return hillshades_dir / f"{dem_path.stem}_custom_{params}.tif"
@@ -286,16 +293,29 @@ def generate_custom_hillshade(
     azimuth: float,
     multidirectional: bool,
     log: LogFunc = None,
-    cancel_check: Optional[callable] = None
+    cancel_check: Optional[callable] = None,
+    combined: bool = False,
 ) -> Path:
     """Generate custom hillshade with user-defined parameters."""
+    if multidirectional and combined:
+        raise ValueError(
+            "Multidirectional and Combined cannot be used at the same time"
+        )
+
     hillshades_dir = get_output_dir() / "hillshades"
     hillshades_dir.mkdir(parents=True, exist_ok=True)
-    output_path = custom_hillshade_path(dem_path, z_factor, altitude, azimuth, multidirectional)
+    output_path = custom_hillshade_path(
+        dem_path, z_factor, altitude, azimuth, multidirectional, combined
+    )
 
     _log(log, "=== Generating Custom Hillshade ===")
     _log(log, f"Z-factor: {z_factor}, Altitude: {altitude}°")
-    _log(log, "Multidirectional: Yes" if multidirectional else f"Azimuth: {azimuth}°")
+    if multidirectional:
+        _log(log, "Multidirectional: Yes")
+    elif combined:
+        _log(log, f"Combined: Yes, Azimuth: {azimuth}°")
+    else:
+        _log(log, f"Azimuth: {azimuth}°")
 
     config = load_config()
     try:
@@ -307,6 +327,8 @@ def generate_custom_hillshade(
     cmd = [gdaldem, "hillshade", "-z", str(z_factor), "-alt", str(altitude)]
     if multidirectional:
         cmd.append("-multidirectional")
+    elif combined:
+        cmd.extend(["-az", str(azimuth), "-combined"])
     else:
         cmd.extend(["-az", str(azimuth)])
     cmd.extend(["-compute_edges", str(dem_path), str(output_path)])

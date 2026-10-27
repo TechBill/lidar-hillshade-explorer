@@ -120,8 +120,8 @@ class ProcessingOrchestrator:
             available_datasets = list_intersecting_datasets(bbox4326=bbox, log=log)
             if not available_datasets:
                 raise RuntimeError(
-                    "No USGS LiDAR datasets found for this location. "
-                    "Try a different area within the United States."
+                    "No LiDAR datasets found for this location. "
+                    "Try a different area."
                 )
             if dataset_rank >= len(available_datasets):
                 raise RuntimeError(
@@ -144,7 +144,7 @@ class ProcessingOrchestrator:
                 try:
                     candidate = available_datasets[dataset_rank]
                     source_type = candidate.get("props", {}).get("source_type")
-                    if source_type == "source_dem":
+                    if source_type in {"source_dem", "opentopography_dem"}:
                         dem_path, ds_props, epsg, dem_resolution = download_source_dem_for_aoi(
                             dataset=candidate,
                             bbox4326=bbox,
@@ -193,7 +193,7 @@ class ProcessingOrchestrator:
 
                 except RuntimeError as e:
                     error_msg = str(e)
-                    if "No USGS LiDAR datasets" in error_msg:
+                    if "No LiDAR datasets" in error_msg:
                         # No datasets available at all
                         raise
                     elif "Requested dataset rank" in error_msg and "but only" in error_msg:
@@ -278,11 +278,13 @@ class ProcessingOrchestrator:
                     "geoid": ds_props.get("geoid"),
                     "metadata_source": ds_props.get("metadata_source"),
                     "metadata_link": ds_props.get("metadata_link"),
+                    "dataset_citation": ds_props.get("dataset_citation"),
+                    "dataset_license": ds_props.get("dataset_license"),
                     "data_source": ds_props.get("source_type"),
                     "source_dem_publication_date": ds_props.get("source_dem_publication_date"),
                     "validation_status": (
                         ds_props.get("source_dem_category")
-                        if ds_props.get("source_type") == "source_dem"
+                        if ds_props.get("source_type") in {"source_dem", "opentopography_dem"}
                         else ds_props.get("lpc_category")
                     ),
                     "epsg": epsg,

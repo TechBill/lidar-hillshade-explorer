@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer – User Guide (v3.5)
+# LiDAR Hillshade Explorer – User Guide (v6.3.1)
 
 ## Overview
 **LiDAR Hillshade Explorer** is a lightweight desktop app for exploring terrain using LiDAR data.  
@@ -16,7 +16,7 @@ Because LiDAR Hillshade Explorer is distributed as a downloadable app (not from 
 
 ### macOS (Apple Silicon)
 
-Version 3.5 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
+Version 6.3.1 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
 Pro, iMac, Mac mini, Mac Studio, and Mac Pro systems. It runs natively on M1,
 M2, M3, M4, and newer Apple Silicon chips. Intel Macs require a separately
 built x86_64 version.
@@ -149,6 +149,9 @@ Choose how the app handles areas without ground-classified LiDAR returns:
 
 When **Smart Selection** is enabled (default), the app automatically:
 - Finds official WESM work units with TNM products covering your location
+- Searches OpenTopography for public high-resolution lidar-derived DTMs
+- Compares native resolution, coverage, validation, quality, and survey date
+- Uses a winning public OpenTopography DTM directly without an API key
 - Uses AWS EPT streaming when the selected work unit is available there
 - Otherwise uses its original-resolution USGS source DEM, when available
 - Falls back to official USGS LAZ tiles when neither EPT nor a source DEM exists
@@ -156,8 +159,8 @@ When **Smart Selection** is enabled (default), the app automatically:
 
 Choose a priority:
 
-- **Best Detail (Recommended)** prioritizes complete coverage, USGS validation,
-  native DEM resolution, quality level, collection date, and update date.
+- **Best Detail (Recommended)** prioritizes complete coverage, native DEM
+  resolution, validation, quality level, collection date, and update date.
 - **Newest Survey** prioritizes collection date, then quality and resolution.
 
 When disabled, you can manually choose which dataset to use from a list.
@@ -189,10 +192,11 @@ Example:
 
 Once the hillshade viewer opens, you can explore the terrain using several controls.
 
-The **LiDAR Dataset** section shows authoritative USGS metadata for the selected
-work unit: collection dates, quality level, source DEM resolution, publication
-date, horizontal and vertical CRS, and geoid. Point spacing and generated DEM
-resolution remain below it as processing-output statistics.
+The **LiDAR Dataset** section shows metadata for the selected USGS or
+OpenTopography dataset: collection dates, quality level, source DEM resolution,
+publication date, coordinate systems, geoid, delivery source, and license.
+Point spacing and generated DEM resolution remain below it as processing-output
+statistics.
 
 ## Navigation
 
@@ -237,6 +241,11 @@ Set your own parameters:
 - **Altitude**: Sun angle above horizon (0–90°, lower = longer shadows)
 - **Azimuth**: Sun direction (0–360°, 315° = northwest)
 - **Multidirectional**: Illuminate from multiple directions at once
+- **Combined**: Blend slope and oblique shading for stronger terrain contrast
+
+Multidirectional and Combined cannot be used at the same time. Selecting one
+automatically clears the other. Azimuth is disabled for Multidirectional and
+remains available for Combined shading.
 
 After selecting a style, click **Apply Style** to regenerate the hillshade. The app reuses the existing DEM data — no re-download needed.
 
@@ -361,9 +370,9 @@ If you want faster performance, try smaller areas first (Small = 0.25 sq mi).
 ---
 
 ## No LiDAR Coverage
-The app uses official USGS WESM/TNM data, plus AWS EPT when available. Coverage
-is primarily within the United States. If you get "No data available," try a
-different location within the US.
+The app searches official USGS WESM/TNM data, AWS EPT, and public
+OpenTopography high-resolution lidar DTMs. Coverage is primarily within the
+United States. If you get "No data available," try a different location.
 
 Enable **Smart Selection** to automatically try the next-ranked WESM work unit.
 
@@ -371,10 +380,10 @@ Enable **Smart Selection** to automatically try the next-ranked WESM work unit.
 
 ## macOS Standalone Release
 
-The version 3.5 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
+The version 6.3.1 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
 Users do not need Homebrew, Python, QGIS, PDAL, or GDAL. Internet access is still
-required to locate and download USGS LiDAR data and periodically refresh USGS
-metadata.
+required to locate and download USGS/OpenTopography terrain data and
+periodically refresh USGS metadata.
 
 ---
 

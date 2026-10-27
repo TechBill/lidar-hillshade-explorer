@@ -173,7 +173,7 @@ class HillshadeViewer:
                 meta.get("collection_start"), meta.get("collection_end")
             )),
             ("Quality", self._format_quality_level(meta.get("quality_level"))),
-            ("USGS DEM", self._format_meters(meta.get("dem_gsd_meters"))),
+            ("Source DEM", self._format_meters(meta.get("dem_gsd_meters"))),
             ("Published", self._format_date(
                 meta.get("source_dem_publication_date")
                 or meta.get("lpc_publication_date")
@@ -182,6 +182,7 @@ class HillshadeViewer:
             ("Horizontal CRS", self._format_crs(meta.get("horizontal_crs"), meta.get("epsg"))),
             ("Vertical CRS", self._format_crs(meta.get("vertical_crs"))),
             ("Geoid", meta.get("geoid")),
+            ("License", meta.get("dataset_license")),
         ]
         for label, value in dataset_rows:
             self._add_metadata_row(info_frame, label, value)
@@ -377,6 +378,7 @@ class HillshadeViewer:
         return {
             "ept": "AWS EPT stream",
             "source_dem": "USGS source DEM",
+            "opentopography_dem": "OpenTopography DTM",
             "lpc": "USGS LAZ tiles",
         }.get(str(value or ""), "Not available")
 
@@ -475,18 +477,17 @@ class HillshadeViewer:
             # Z-factor
             ttk.Label(self.dynamic_frame, text="Z-factor:", font=("Helvetica", 9)).pack(anchor=tk.W, pady=(5, 2))
             self.z_var = tk.StringVar(value="1.0")
-            ttk.Entry(self.dynamic_frame, textvariable=self.z_var, width=12).pack(anchor=tk.W, pady=2)
+            self.z_entry = self._add_custom_number_entry(self.z_var)
 
             # Altitude
             ttk.Label(self.dynamic_frame, text="Altitude (°):", font=("Helvetica", 9)).pack(anchor=tk.W, pady=(5, 2))
             self.alt_var = tk.StringVar(value="45")
-            ttk.Entry(self.dynamic_frame, textvariable=self.alt_var, width=12).pack(anchor=tk.W, pady=2)
+            self.alt_entry = self._add_custom_number_entry(self.alt_var)
 
             # Azimuth
             ttk.Label(self.dynamic_frame, text="Azimuth (°):", font=("Helvetica", 9)).pack(anchor=tk.W, pady=(5, 2))
             self.az_var = tk.StringVar(value="315")
-            self.az_entry = ttk.Entry(self.dynamic_frame, textvariable=self.az_var, width=12)
-            self.az_entry.pack(anchor=tk.W, pady=2)
+            self.az_entry = self._add_custom_number_entry(self.az_var)
 
             # Multidirectional
             self.multi_var = tk.BooleanVar(value=False)
@@ -498,7 +499,39 @@ class HillshadeViewer:
             )
             multi_check.pack(anchor=tk.W, pady=(5, 0))
 
+            # Combined slope and oblique shading. GDAL does not allow this
+            # mode to be used at the same time as multidirectional shading.
+            self.combined_var = tk.BooleanVar(value=False)
+            combined_check = ttk.Checkbutton(
+                self.dynamic_frame,
+                text="Combined",
+                variable=self.combined_var,
+                command=self._on_combined_changed
+            )
+            combined_check.pack(anchor=tk.W, pady=(2, 0))
+
             self.apply_btn.config(state=tk.NORMAL)
+
+    def _add_custom_number_entry(self, variable: tk.StringVar) -> tk.Entry:
+        """Create a reliably editable Custom-style numeric input."""
+        entry = tk.Entry(
+            self.dynamic_frame,
+            textvariable=variable,
+            width=12,
+            state=tk.NORMAL,
+            takefocus=True,
+        )
+        entry.pack(anchor=tk.W, pady=2)
+        entry.bind("<FocusIn>", self._select_custom_entry_value)
+        return entry
+
+    @staticmethod
+    def _select_custom_entry_value(event) -> None:
+        """Select the default on first focus so typing or Delete replaces it."""
+        # Run after Tk finishes processing the mouse click; otherwise its
+        # default Button-1 handler can immediately undo the selection.
+        event.widget.after_idle(event.widget.selection_range, 0, tk.END)
+        event.widget.after_idle(event.widget.icursor, tk.END)
 
     def _on_preset_changed(self, event=None):
         """Handle preset selection change."""
@@ -519,9 +552,16 @@ class HillshadeViewer:
     def _on_multi_changed(self):
         """Handle multidirectional checkbox change."""
         if self.multi_var.get():
+            self.combined_var.set(False)
             self.az_entry.config(state=tk.DISABLED)
         else:
             self.az_entry.config(state=tk.NORMAL)
+
+    def _on_combined_changed(self):
+        """Keep combined and multidirectional shading mutually exclusive."""
+        if self.combined_var.get():
+            self.multi_var.set(False)
+        self.az_entry.config(state=tk.NORMAL)
 
     def _get_hillshade_path(self) -> Optional[Path]:
         """
@@ -551,9 +591,12 @@ class HillshadeViewer:
                 alt = float(self.alt_var.get())
                 az = float(self.az_var.get()) if not self.multi_var.get() else 0.0
                 multi = self.multi_var.get()
+                combined = self.combined_var.get()
             except (ValueError, AttributeError):
                 return None
-            return custom_hillshade_path(self.dem_path, z, alt, az, multi)
+            return custom_hillshade_path(
+                self.dem_path, z, alt, az, multi, combined
+            )
 
         return None
 
@@ -606,6 +649,7 @@ class HillshadeViewer:
                 altitude = float(self.alt_var.get())
                 azimuth = float(self.az_var.get())
                 multidirectional = self.multi_var.get()
+                combined = self.combined_var.get()
 
                 self._regenerate_hillshade_async(
                     lambda: generate_custom_hillshade(
@@ -614,7 +658,8 @@ class HillshadeViewer:
                         altitude,
                         azimuth,
                         multidirectional,
-                        log=log_msg
+                        log=log_msg,
+                        combined=combined
                     )
                 )
         except ValueError as e:

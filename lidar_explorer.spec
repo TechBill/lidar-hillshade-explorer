@@ -241,8 +241,8 @@ else:
             info_plist={
                 'NSPrincipalClass': 'NSApplication',
                 'NSHighResolutionCapable': 'True',
-                'CFBundleShortVersionString': '3.5',
-                'CFBundleVersion': '3.5',
+                'CFBundleShortVersionString': '6.3.1',
+                'CFBundleVersion': '6.3.1',
                 'CFBundleDisplayName': 'LiDAR Hillshade Explorer',
             },
         )

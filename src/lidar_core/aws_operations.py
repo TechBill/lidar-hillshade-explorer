@@ -2,7 +2,7 @@
 """
 AWS/USGS LiDAR operations for LiDAR Hillshade Explorer.
 
-Handles dataset discovery, selection, and download/clipping using PDAL.
+Handles USGS/OpenTopography discovery, selection, and download/clipping.
 Combined functionality from LidarStudio's aws_index, aws_select_dataset, and aws_clip_class2.
 """
 
@@ -44,6 +44,9 @@ WESM_URL = (
 TNM_PRODUCTS_URL = "https://tnmaccess.nationalmap.gov/api/v1/products"
 TNM_OPR_DATASET = "Original Product Resolution (OPR) Digital Elevation Model (DEM)"
 TNM_LPC_DATASET = "Lidar Point Cloud (LPC)"
+OPENTOPO_CATALOG_URL = "https://portal.opentopography.org/API/otCatalog"
+OPENTOPO_STAC_BASE_URL = "https://portal.opentopography.org/stac"
+OPENTOPO_DATA_HOST = "opentopography.s3.sdsc.edu"
 
 CACHE_EXPIRY_DAYS = 30
 WESM_CACHE_EXPIRY_DAYS = 7
@@ -557,8 +560,8 @@ def _dataset_sort_key(
         )
     return (
         coverage,
-        validation,
         resolution_score,
+        validation,
         quality_score,
         date_value,
         updated,
@@ -689,7 +692,7 @@ def _query_tnm_products(
         )
         request = Request(
             f"{TNM_PRODUCTS_URL}?{query}",
-            headers={"User-Agent": "LiDAR-Hillshade-Explorer/3.2"},
+            headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.1"},
         )
         if HAS_CERTIFI:
             ssl_context = ssl.create_default_context(cafile=certifi.where())
@@ -889,13 +892,272 @@ def _ept_candidates(
     return candidates
 
 
+def _fetch_json_url(url: str, timeout: int = 45) -> Dict[str, Any]:
+    """Fetch a public JSON document with the app's normal TLS handling."""
+    request = Request(
+        url,
+        headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.1"},
+    )
+    if HAS_CERTIFI:
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+    else:
+        ssl_context = ssl.create_default_context()
+    with urlopen(request, timeout=timeout, context=ssl_context) as response:
+        payload = json.load(response)
+    if not isinstance(payload, dict):
+        raise ValueError("Expected a JSON object")
+    return payload
+
+
+def _catalog_property(dataset: Dict[str, Any], name: str) -> Optional[str]:
+    """Return a named OpenTopography additionalProperty value."""
+    for prop in dataset.get("spatialCoverage", {}).get("additionalProperty", []):
+        if isinstance(prop, dict) and prop.get("name") == name:
+            value = prop.get("value")
+            return str(value).strip() if value is not None else None
+    return None
+
+
+def _catalog_area_sq_km(dataset: Dict[str, Any]) -> Optional[float]:
+    """Extract the numeric catalog area, when supplied in square kilometers."""
+    measurements = dataset.get("variableMeasured") or dataset.get(
+        "spatialCoverage", {}
+    ).get("variableMeasured", [])
+    for prop in measurements:
+        if not isinstance(prop, dict) or prop.get("name") != "Area":
+            continue
+        match = re.search(r"[0-9]+(?:\.[0-9]+)?", str(prop.get("value") or ""))
+        if match:
+            return float(match.group(0))
+    return None
+
+
+def _catalog_geometry(dataset: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Extract the first GeoJSON geometry from an OpenTopography record."""
+    features = (
+        dataset.get("spatialCoverage", {})
+        .get("geo", {})
+        .get("geojson", {})
+        .get("features", [])
+    )
+    for feature in features:
+        geometry = feature.get("geometry") if isinstance(feature, dict) else None
+        if isinstance(geometry, dict):
+            return geometry
+    return None
+
+
+def _catalog_temporal_dates(value: Any) -> Tuple[Optional[str], Optional[str]]:
+    """Normalize an OpenTopography date or date range."""
+    parts = [part.strip()[:10] for part in str(value or "").split("/")]
+    parts = [part for part in parts if re.fullmatch(r"\d{4}-\d{2}-\d{2}", part)]
+    if not parts:
+        return None, None
+    return parts[0], parts[-1]
+
+
+def _remote_raster_resolution(url: str) -> float:
+    """Read only a public COG's header and return its native pixel size."""
+    import rasterio
+
+    with rasterio.Env(GDAL_HTTP_MAX_RETRY="2", GDAL_HTTP_RETRY_DELAY="1"):
+        with rasterio.open(url) as source:
+            xres, yres = source.res
+    resolution = (abs(float(xres)) + abs(float(yres))) / 2.0
+    if not math.isfinite(resolution) or resolution <= 0:
+        raise ValueError("OpenTopography raster has an invalid pixel size")
+    return resolution
+
+
+def _opentopography_item_for_collection(
+    short_name: str,
+) -> Tuple[Dict[str, Any], str, Dict[str, Any]]:
+    """Return the preferred bare-earth/DTM STAC item and dataset page URL."""
+    collection_url = f"{OPENTOPO_STAC_BASE_URL}/{short_name}_collection.json"
+    collection = _fetch_json_url(collection_url)
+    item_links = [
+        link.get("href")
+        for link in collection.get("links", [])
+        if isinstance(link, dict)
+        and link.get("rel") == "item"
+        and isinstance(link.get("href"), str)
+        and str(link.get("href")).startswith(f"{OPENTOPO_STAC_BASE_URL}/")
+    ]
+    item_links.sort(
+        key=lambda href: any(
+            marker in href.lower() for marker in ("_be.", "_dtm.", "bare")
+        ),
+        reverse=True,
+    )
+    for item_url in item_links:
+        item = _fetch_json_url(item_url)
+        title = str(item.get("properties", {}).get("title") or "").lower()
+        item_id = str(item.get("id") or "").lower()
+        if any(marker in f"{title} {item_id}" for marker in ("dtm", "bare", "_be")):
+            dataset_page = next(
+                (
+                    str(link.get("href"))
+                    for link in collection.get("links", [])
+                    if isinstance(link, dict) and link.get("rel") == "about"
+                ),
+                collection_url,
+            )
+            return item, dataset_page, collection
+    raise RuntimeError("No bare-earth or DTM raster item is published")
+
+
+def _opentopography_candidates(
+    bbox4326: Tuple[float, float, float, float],
+    log: LogFunc = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Discover public, localized lidar DTMs from OpenTopography's catalog."""
+    minx, miny, maxx, maxy = bbox4326
+    query = urlencode(
+        {
+            "productFormat": "Raster",
+            "minx": f"{minx:.10f}",
+            "miny": f"{miny:.10f}",
+            "maxx": f"{maxx:.10f}",
+            "maxy": f"{maxy:.10f}",
+            "detail": "true",
+            "outputFormat": "json",
+            "include_federated": "false",
+        }
+    )
+    payload = _fetch_json_url(f"{OPENTOPO_CATALOG_URL}?{query}")
+    results: Dict[str, Dict[str, Any]] = {}
+
+    for wrapper in payload.get("Datasets", []):
+        dataset = wrapper.get("Dataset") if isinstance(wrapper, dict) else None
+        if not isinstance(dataset, dict):
+            continue
+        keywords = str(dataset.get("keywords") or "").lower()
+        area_sq_km = _catalog_area_sq_km(dataset)
+        geometry = _catalog_geometry(dataset)
+        short_name = str(dataset.get("alternateName") or "").strip()
+        if (
+            "lidar" not in keywords
+            or not short_name
+            or not re.fullmatch(r"[A-Za-z0-9_.-]+", short_name)
+            or area_sq_km is None
+            or area_sq_km > 250_000
+            or not geometry
+            or not _geometry_covers_bbox(geometry, bbox4326)
+        ):
+            continue
+
+        try:
+            item, dataset_page, collection = _opentopography_item_for_collection(
+                short_name
+            )
+        except Exception as exc:
+            _log(log, f"Skipping OpenTopography {short_name}: {exc}")
+            continue
+
+        products: List[Dict[str, Any]] = []
+        for name, asset in item.get("assets", {}).items():
+            if not isinstance(asset, dict):
+                continue
+            url = asset.get("href")
+            bounds = asset.get("bbox")
+            roles = asset.get("roles") or []
+            media_type = str(asset.get("type") or "").lower()
+            if (
+                not isinstance(url, str)
+                or not url.startswith(f"https://{OPENTOPO_DATA_HOST}/")
+                or "data" not in roles
+                or "tiff" not in media_type
+                or not isinstance(bounds, list)
+                or len(bounds) < 4
+            ):
+                continue
+            try:
+                asset_bbox = tuple(float(value) for value in bounds[:4])
+            except (TypeError, ValueError):
+                continue
+            if not _bbox_intersects(asset_bbox, bbox4326):
+                continue
+            products.append(
+                {
+                    "title": name,
+                    "downloadURL": url,
+                    "sizeInBytes": int(asset.get("file:size") or 0),
+                    "boundingBox": {
+                        "minX": asset_bbox[0],
+                        "minY": asset_bbox[1],
+                        "maxX": asset_bbox[2],
+                        "maxY": asset_bbox[3],
+                    },
+                }
+            )
+        if not products or not _products_cover_bbox(products, bbox4326):
+            continue
+
+        try:
+            resolution = _remote_raster_resolution(
+                str(products[0]["downloadURL"])
+            )
+        except Exception as exc:
+            _log(
+                log,
+                f"Skipping OpenTopography {short_name}: "
+                f"cannot read resolution ({exc})",
+            )
+            continue
+
+        identifier = dataset.get("identifier") or {}
+        opentopo_id = str(identifier.get("value") or short_name)
+        collected_start, collected_end = _catalog_temporal_dates(
+            dataset.get("temporalCoverage")
+        )
+        year_text = (collected_end or collected_start or "")[:4]
+        publication = str(dataset.get("dateCreated") or "")[:10] or None
+        horizontal_crs = _catalog_property(dataset, "Horizontal Coordinates")
+        horizontal_epsg = _catalog_property(dataset, "EPSG (Horizontal)")
+        vertical_crs = _catalog_property(dataset, "Vertical Coordinates")
+        name = str(dataset.get("name") or short_name)
+        props = {
+            "id": short_name,
+            "opentopo_id": opentopo_id,
+            "workunit": short_name,
+            "name": name,
+            "source_type": "opentopography_dem",
+            "source_dem_products": products,
+            "covers_aoi": True,
+            "collection_start": collected_start,
+            "collection_end": collected_end,
+            "collection_year": int(year_text) if year_text.isdigit() else None,
+            "quality_level": None,
+            "dem_gsd_meters": resolution,
+            "horizontal_crs": horizontal_crs or horizontal_epsg,
+            "vertical_crs": vertical_crs,
+            "geoid": None,
+            "source_dem_publication_date": publication,
+            "source_dem_category": "Not USGS validated",
+            "year_estimated": False,
+            "metadata_source": "OpenTopography Catalog/STAC",
+            "metadata_link": dataset_page,
+            "dataset_citation": collection.get("sci:citation")
+            or dataset.get("citation"),
+            "dataset_license": collection.get("license")
+            or "See OpenTopography dataset page",
+        }
+        results[f"opentopography:{short_name.lower()}"] = {
+            "id": short_name,
+            "props": props,
+        }
+
+    _log(log, f"OpenTopography found {len(results)} public high-resolution DTM(s)")
+    return results
+
+
 def list_intersecting_datasets(
     bbox4326: Tuple[float, float, float, float],
     log: LogFunc = None,
     ranking_mode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Return WESM work units with official products intersecting the requested AOI.
+    Return ranked USGS and OpenTopography datasets intersecting the requested AOI.
 
     Args:
         bbox4326: Bounding box (lon_min, lat_min, lon_max, lat_max) in EPSG:4326
@@ -964,6 +1226,13 @@ def list_intersecting_datasets(
         else:
             candidates[key] = ept_candidate
 
+    try:
+        opentopography = _opentopography_candidates(aoi_bbox, log=log)
+    except Exception as exc:
+        _log(log, f"OpenTopography catalog unavailable ({exc})")
+        opentopography = {}
+    candidates.update(opentopography)
+
     if not candidates:
         return []
 
@@ -983,7 +1252,7 @@ def list_intersecting_datasets(
     )
     _log(
         log,
-        f"WESM-first discovery found {len(result)} work unit(s); "
+        f"Combined catalog discovery found {len(result)} dataset(s); "
         f"ranking mode: {'Best Detail' if ranking_mode == 'best_detail' else 'Newest Survey'}",
     )
     return result
@@ -1016,8 +1285,7 @@ def select_dataset_for_bbox(
 
     if not candidates:
         raise RuntimeError(
-            "No USGS LiDAR datasets found for this location. "
-            "Try a different area within the United States."
+            "No LiDAR datasets found for this location. Try a different area."
         )
 
     if rank >= len(candidates):
@@ -1035,7 +1303,9 @@ def select_dataset_for_bbox(
         epsg = _get_ept_srs_epsg(delivery_url)
     else:
         products = best_props.get(
-            "source_dem_products" if source_type == "source_dem" else "lpc_products",
+            "source_dem_products"
+            if source_type in {"source_dem", "opentopography_dem"}
+            else "lpc_products",
             [],
         )
         delivery_url = _product_download_url(products[0]) if products else None
@@ -1352,12 +1622,13 @@ def _download_product_file(
     allowed_hosts = {
         "prd-tnm.s3.amazonaws.com",
         "rockyweb.usgs.gov",
+        OPENTOPO_DATA_HOST,
     }
     if host not in allowed_hosts:
         raise RuntimeError(f"Unexpected USGS product host: {host or 'missing'}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    request = Request(url, headers={"User-Agent": "LiDAR-Hillshade-Explorer/3.2"})
+    request = Request(url, headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.3.1"})
     if HAS_CERTIFI:
         ssl_context = ssl.create_default_context(cafile=certifi.where())
     else:
@@ -1408,7 +1679,7 @@ def download_source_dem_for_aoi(
     log: LogFunc = None,
     cancel_check: Optional[Callable[[], bool]] = None,
 ) -> Tuple[Path, Dict[str, Any], int, float]:
-    """Download official OPR tiles and crop/mosaic them to the requested AOI."""
+    """Crop/mosaic an official USGS or public OpenTopography source DTM."""
     import numpy as np
     import rasterio
     from rasterio.merge import merge
@@ -1417,35 +1688,49 @@ def download_source_dem_for_aoi(
     props = dict(dataset.get("props") or {})
     products = props.get("source_dem_products") or []
     if not products:
-        raise RuntimeError("Selected WESM work unit has no source DEM tiles")
+        raise RuntimeError("Selected dataset has no source DEM tiles")
 
     dem_dir = get_output_dir() / "dem"
     dem_dir.mkdir(parents=True, exist_ok=True)
     dem_path = dem_dir / f"{_output_basename(center_lat, center_lon, square_miles)}.tif"
 
-    _log(log, "=== Downloading official USGS source DEM ===")
-    _log(log, f"Work unit: {props.get('workunit') or dataset.get('id')}")
+    is_opentopography = props.get("source_type") == "opentopography_dem"
+    source_label = (
+        "OpenTopography DTM"
+        if is_opentopography
+        else "official USGS source DEM"
+    )
+    _log(log, f"=== Preparing {source_label} ===")
+    _log(log, f"Dataset: {props.get('workunit') or dataset.get('id')}")
     with tempfile.TemporaryDirectory(prefix="source_dem_", dir=dem_dir) as temp_dir:
-        tile_paths = []
-        for index, product in enumerate(products):
-            url = _product_download_url(product) or ""
-            filename = Path(unquote(urlparse(url).path)).name or f"tile_{index}.tif"
-            tile_paths.append(
-                _download_product_file(
-                    product,
-                    Path(temp_dir) / filename,
-                    log=log,
-                    cancel_check=cancel_check,
+        if is_opentopography:
+            _log(log, "Reading public cloud-optimized DTM tiles...")
+            sources = [
+                rasterio.open(str(_product_download_url(product)))
+                for product in products
+            ]
+        else:
+            tile_paths = []
+            for index, product in enumerate(products):
+                url = _product_download_url(product) or ""
+                filename = (
+                    Path(unquote(urlparse(url).path)).name or f"tile_{index}.tif"
                 )
-            )
-
-        sources = [rasterio.open(path) for path in tile_paths]
+                tile_paths.append(
+                    _download_product_file(
+                        product,
+                        Path(temp_dir) / filename,
+                        log=log,
+                        cancel_check=cancel_check,
+                    )
+                )
+            sources = [rasterio.open(path) for path in tile_paths]
         try:
             source_crs = sources[0].crs
             if source_crs is None:
-                raise RuntimeError("USGS source DEM tile has no coordinate system")
+                raise RuntimeError("Source DEM tile has no coordinate system")
             if any(source.crs != source_crs for source in sources[1:]):
-                raise RuntimeError("USGS source DEM tiles use inconsistent coordinate systems")
+                raise RuntimeError("Source DEM tiles use inconsistent coordinate systems")
             projected_bounds = transform_bounds(
                 "EPSG:4326", source_crs, *bbox4326, densify_pts=21
             )
@@ -1462,7 +1747,7 @@ def download_source_dem_for_aoi(
                 raise RuntimeError("Cancelled by user")
             valid = np.isfinite(mosaic[0]) & (mosaic[0] != nodata)
             if not np.any(valid):
-                raise RuntimeError("Official source DEM contains no data in the requested area")
+                raise RuntimeError("Source DEM contains no data in the requested area")
             profile = sources[0].profile.copy()
             profile.update(
                 driver="GTiff",

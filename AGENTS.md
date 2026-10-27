@@ -98,7 +98,7 @@ operation only: never use this preference to overwrite DEM elevations, remove
 GeoTIFF NoData metadata, or synthesize underwater terrain. The source DEM and
 GeoTIFF must remain analytically unchanged.
 
-## WESM-first discovery and delivery
+## Combined USGS/OpenTopography discovery and delivery
 
 `list_intersecting_datasets()` in `src/lidar_core/aws_operations.py` treats
 the daily WESM CSV as the authoritative work-unit catalog and metadata source.
@@ -107,11 +107,19 @@ app uses the official TNM Access products API as the lightweight spatial query
 for intersecting OPR/source-DEM and LPC tiles. Results are joined back to WESM
 by the work-unit component in official product paths.
 
-The HoBu coverage index is now only an EPT availability/delivery index. It must
-not become the primary catalog again. Delivery priority for a selected work
-unit is AWS EPT, then official source DEM, then official LPC/LAZ. Source DEMs
-are cropped and mosaicked without changing their elevation values; point-cloud
-paths continue to retain classification 2 before DEM generation.
+The public OpenTopography `otCatalog` and raster STAC are also searched for
+localized lidar-derived bare-earth DTMs. Catalog/STAC lookup and public COG
+access do not require an API key. Only candidates whose real coverage and tile
+union cover the complete AOI are admitted. Their native COG resolution is read
+before ranking, and winning COGs are cropped directly without resampling or
+submitting an OpenTopography processing job. Preserve dataset citation and
+license metadata.
+
+The HoBu coverage index is only an EPT availability/delivery index. It must not
+become the primary USGS catalog again. USGS delivery priority remains AWS EPT,
+then official source DEM, then official LPC/LAZ. Source DEMs and OpenTopography
+DTMs are cropped and mosaicked without changing their elevation values;
+point-cloud paths continue to retain classification 2 before DEM generation.
 
 ## GDAL/PROJ/rasterio environment — this took three rounds to get right
 

@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 3.5
+# LiDAR Hillshade Explorer 6.3.1
 
 A simplified desktop LiDAR hillshade application for non-technical users.
 
@@ -10,9 +10,10 @@ User enters coordinates, clicks one button, and the app automatically finds LiDA
 
 - **Simple Input**: Enter latitude/longitude and area size (0.25, 0.5, or 1.0 sq mi)
 - **Paste Coordinates**: One-click paste from clipboard (supports Google Maps, Google Earth KML, comma/space-separated)
-- **Automatic Discovery**: Finds work units through official USGS WESM/TNM data
+- **Automatic Discovery**: Compares official USGS WESM/TNM/AWS data with public
+  OpenTopography high-resolution lidar DTMs
 - **Smart Selection**: Best Detail or Newest Survey ranking with automatic
-  EPT, source-DEM, and official-LAZ delivery fallbacks
+  OpenTopography DTM, EPT, source-DEM, and official-LAZ delivery paths
 - **Terrain Styles**: Continuous Terrain, Preserve Large Gaps, and Custom TIN settings
 - **Auto-Resolution DEM**: Analyzes point spacing and selects optimal DEM resolution
 - **Interactive Viewer**: Pillow-based viewer with smooth zoom/pan controls
@@ -26,7 +27,7 @@ User enters coordinates, clicks one button, and the app automatically finds LiDA
 - **Multiple Styles**:
   - Classic hillshade
   - 5 archaeology presets
-  - Custom parameters (z-factor, altitude, azimuth, multidirectional)
+  - Custom parameters (z-factor, altitude, azimuth, multidirectional, combined)
 - **KMZ Export**: Export to Google Earth format
 
 ## Installation
@@ -37,7 +38,7 @@ Development mode requires system-level tools (install via QGIS/Homebrew/etc.):
 - PDAL (LiDAR processing + DEM generation)
 - GDAL (hillshade generation and KMZ export)
 
-The standalone 3.5 release bundles these tools and does not require users to
+The standalone 6.3.1 release bundles these tools and does not require users to
 install Python, PDAL, GDAL, PROJ, Homebrew, or QGIS.
 
 ### Python Dependencies
@@ -88,7 +89,9 @@ python app.py
 **Style Selection:**
 - **Classic**: Standard hillshade (z=1.0, alt=45°, az=315°)
 - **Archaeology Presets**: Choose from 5 archaeological visualization presets
-- **Custom**: Set your own z-factor, altitude, azimuth, and multidirectional options
+- **Custom**: Set your own z-factor, altitude, azimuth, multidirectional, and
+  combined shading options. Multidirectional and Combined are mutually
+  exclusive.
 
 After changing style, click **Apply** to regenerate the hillshade with new parameters (uses existing DEM, no re-download needed).
 
@@ -168,8 +171,8 @@ Install PDAL (QGIS/conda/Homebrew), or set `PDAL_BIN` environment variable.
 Install QGIS which includes GDAL, or set `GDALDEM_BIN` environment variable.
 
 ### No LiDAR Coverage
-Try a different location within the United States. The app uses official USGS
-WESM/TNM products and AWS EPT delivery, which primarily cover the US.
+Try a different location. The app searches official USGS WESM/TNM products,
+AWS EPT delivery, and public OpenTopography lidar-derived DTMs.
 
 ### Low Point Density
 Enable "Smart Selection" to automatically try the next-ranked work unit.

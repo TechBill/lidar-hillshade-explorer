@@ -509,13 +509,14 @@ class HillshadeExplorerApp:
             source_label = {
                 "ept": "EPT",
                 "source_dem": "source DEM",
+                "opentopography_dem": "OpenTopography DTM",
                 "lpc": "official LAZ",
             }.get(props.get("source_type"))
             if source_label:
                 details.append(source_label)
             validation = (
                 props.get("source_dem_category")
-                if props.get("source_type") == "source_dem"
+                if props.get("source_type") in {"source_dem", "opentopography_dem"}
                 else props.get("lpc_category")
             )
             if validation:

@@ -12,6 +12,7 @@ from lidar_core.aws_operations import (  # noqa: E402
     _dataset_sort_key,
     _enrich_dataset_properties,
     _geometry_intersects_bbox,
+    _opentopography_candidates,
     _parse_wesm_csv,
     _product_workunit_key,
     _products_cover_bbox,
@@ -74,11 +75,12 @@ class CoverageGeometryTests(unittest.TestCase):
         }
         self.assertFalse(_geometry_intersects_bbox(geometry, (4, 4, 6, 6)))
 
+    @patch("lidar_core.aws_operations._opentopography_candidates", return_value={})
     @patch("lidar_core.aws_operations.ensure_wesm_metadata", return_value={})
     @patch("lidar_core.aws_operations._query_tnm_products", return_value=[])
     @patch("lidar_core.aws_operations.ensure_aws_index")
     def test_selection_uses_real_coverage_not_envelope(
-        self, mock_index, _mock_tnm, _mock_wesm
+        self, mock_index, _mock_tnm, _mock_wesm, _mock_opentopography
     ):
         false_positive = polygon_feature(
             "Newer_false_positive_2024",
@@ -267,6 +269,26 @@ class WesmSelectionTests(unittest.TestCase):
             _dataset_sort_key("MO_SouthernMO_1_D22", older),
         )
 
+    def test_best_detail_prefers_finer_resolution_before_validation(self):
+        validated_one_meter = {
+            "covers_aoi": True,
+            "source_type": "source_dem",
+            "source_dem_category": "Meets",
+            "dem_gsd_meters": 1,
+            "collection_end": "2024-01-01",
+        }
+        public_quarter_meter = {
+            "covers_aoi": True,
+            "source_type": "opentopography_dem",
+            "source_dem_category": "Not USGS validated",
+            "dem_gsd_meters": 0.25,
+            "collection_end": "2023-09-21",
+        }
+        self.assertGreater(
+            _dataset_sort_key("AR23_Moran", public_quarter_meter),
+            _dataset_sort_key("USGS_One_Meter", validated_one_meter),
+        )
+
     def test_tnm_product_path_resolves_wesm_workunit(self):
         product = {
             "downloadURL": (
@@ -279,11 +301,12 @@ class WesmSelectionTests(unittest.TestCase):
             "mose11county1b24",
         )
 
+    @patch("lidar_core.aws_operations._opentopography_candidates", return_value={})
     @patch("lidar_core.aws_operations._ept_candidates", return_value={})
     @patch("lidar_core.aws_operations._query_tnm_products")
     @patch("lidar_core.aws_operations.ensure_wesm_metadata")
     def test_wesm_first_discovery_finds_non_ept_source_dem(
-        self, mock_wesm, mock_query, _mock_ept
+        self, mock_wesm, mock_query, _mock_ept, _mock_opentopography
     ):
         mock_wesm.return_value = self.records
         source_product = {
@@ -301,6 +324,82 @@ class WesmSelectionTests(unittest.TestCase):
         self.assertEqual(datasets[0]["id"], "MO_SE11County_1_B24")
         self.assertEqual(datasets[0]["props"]["source_type"], "source_dem")
         self.assertTrue(datasets[0]["props"]["covers_aoi"])
+
+    @patch("lidar_core.aws_operations._remote_raster_resolution", return_value=0.25)
+    @patch("lidar_core.aws_operations._fetch_json_url")
+    def test_opentopography_catalog_builds_public_dtm_candidate(
+        self, mock_fetch, _mock_resolution
+    ):
+        catalog = {
+            "Datasets": [
+                {
+                    "Dataset": {
+                        "name": "Mapping Landscape Evolution in the Ozarks, AR 2023",
+                        "identifier": {"value": "OTSDEM.072024.6344.2"},
+                        "alternateName": "AR23_Moran",
+                        "dateCreated": "2024-07-31",
+                        "citation": "Moran, C. (2024).",
+                        "keywords": "lidar, topography, geomorphology",
+                        "temporalCoverage": "2023-09-21",
+                        "spatialCoverage": {
+                            "geo": {
+                                "geojson": {
+                                    "features": [
+                                        {
+                                            "geometry": {
+                                                "type": "Polygon",
+                                                "coordinates": [
+                                                    [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]
+                                                ],
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "additionalProperty": [
+                                {"name": "Horizontal Coordinates", "value": "NAD83 / UTM 15N"},
+                                {"name": "EPSG (Horizontal)", "value": "6344"},
+                                {"name": "Vertical Coordinates", "value": "Ellipsoid"},
+                            ],
+                        },
+                        "variableMeasured": [{"name": "Area", "value": "59.72 km2"}],
+                    }
+                }
+            ]
+        }
+        collection = {
+            "links": [
+                {"rel": "about", "href": "https://example.test/dataset"},
+                {
+                    "rel": "item",
+                    "href": "https://portal.opentopography.org/stac/items/AR23_Moran_be.json",
+                },
+            ]
+        }
+        item = {
+            "id": "AR23_Moran_be",
+            "properties": {"title": "AR23_Moran - DTM"},
+            "assets": {
+                "tile.tif": {
+                    "href": "https://opentopography.s3.sdsc.edu/raster/AR23/tile.tif",
+                    "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                    "file:size": 1000,
+                    "bbox": [0, 0, 2, 2],
+                    "roles": ["data"],
+                }
+            },
+        }
+        mock_fetch.side_effect = [catalog, collection, item]
+
+        candidates = _opentopography_candidates((0.5, 0.5, 1.5, 1.5))
+
+        candidate = candidates["opentopography:ar23_moran"]
+        self.assertEqual(candidate["id"], "AR23_Moran")
+        self.assertEqual(candidate["props"]["opentopo_id"], "OTSDEM.072024.6344.2")
+        self.assertEqual(candidate["props"]["source_type"], "opentopography_dem")
+        self.assertEqual(candidate["props"]["dem_gsd_meters"], 0.25)
+        self.assertEqual(candidate["props"]["collection_year"], 2023)
+        self.assertTrue(candidate["props"]["covers_aoi"])
 
     def test_validation_rejects_truncated_nationwide_export(self):
         with self.assertRaisesRegex(ValueError, "contained only 3 work units"):
