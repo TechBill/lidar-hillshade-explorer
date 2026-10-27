@@ -1,4 +1,4 @@
-# Bundling Guide for LiDAR Hillshade Explorer 6.3.1
+# Bundling Guide for LiDAR Hillshade Explorer 6.3.2
 
 ## Summary
 
@@ -20,7 +20,7 @@ Your app is configured to bundle all required binaries and libraries into a stan
 
 4. **Updated code to check bundled binaries first**:
    - Created [`src/utils/binary_paths.py`](src/utils/binary_paths.py) - Helper to find bundled binaries (cross-platform)
-   - Updated [`src/lidar_core/aws_operations.py`](src/lidar_core/aws_operations.py) - pdal finder with conda paths
+   - Updated [`src/lidar_core/delivery/point_cloud.py`](src/lidar_core/delivery/point_cloud.py) - PDAL finder with conda paths
    - Updated [`src/lidar_core/dem_generator.py`](src/lidar_core/dem_generator.py) - PDAL DEM pipeline
    - Updated [`src/lidar_core/hillshade_engine.py`](src/lidar_core/hillshade_engine.py) - gdaldem finder with conda paths
 
@@ -161,7 +161,7 @@ The `.app` bundle can be distributed as:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-6.3.1-Mac-ARM64.zip"
+  "LiDAR-Hillshade-6.3.2-Mac-ARM64.zip"
 ```
 
 ### Windows

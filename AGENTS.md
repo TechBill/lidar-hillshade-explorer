@@ -100,7 +100,7 @@ GeoTIFF must remain analytically unchanged.
 
 ## Combined USGS/OpenTopography discovery and delivery
 
-`list_intersecting_datasets()` in `src/lidar_core/aws_operations.py` treats
+`list_intersecting_datasets()` in `src/lidar_core/catalogs/usgs.py` treats
 the daily WESM CSV as the authoritative work-unit catalog and metadata source.
 The CSV has no geometry, while the WESM GeoPackage is several gigabytes, so the
 app uses the official TNM Access products API as the lightweight spatial query
@@ -131,7 +131,7 @@ that are easy to conflate:
   `pyproj` imports, used by `src/lidar_core/kmz_export.py` and
   `dem_generator.py`).
 - `get_bundled_lib_env()` — called per-call from `dem_generator.py`,
-  `hillshade_engine.py`, `aws_operations.py` to build an `env=` dict passed
+  `hillshade_engine.py`, and `delivery/point_cloud.py` to build an `env=` dict passed
   only to `subprocess.run`/`Popen` when invoking the bundled `pdal`/
   `gdaldem` CLI binaries.
 
@@ -193,7 +193,8 @@ this without re-reading this section):
    ever the problem.
 
 A second, independent bug was found and fixed the same round: don't recreate
-`aws_operations.py`'s old `clip_aws_aoi_to_ground_laz()` pattern of checking
+the old `clip_aws_aoi_to_ground_laz()` pattern (now in
+`delivery/point_cloud.py`) of checking
 `/opt/homebrew/share/proj` and calling `pyproj.datadir.set_data_dir()` on it
 when present — that's a **sticky, process-wide** override (it stays in
 effect for the rest of the run) based on whatever happens to be on the
@@ -258,7 +259,7 @@ Used this to confirm the Advanced Settings scroll fix keeps the button bar
 within the dialog bounds without needing to drive the whole app.
 
 `tests/test_selection.py` (`python3 -m unittest`) covers dataset
-ranking/config logic in `lidar_core.aws_operations` and `utils.config` — no
+catalog/ranking logic and `utils.config` — no
 GUI or GDAL/PDAL dependency, safe to run anywhere.
 
 To sanity-check the *built* app actually launches:

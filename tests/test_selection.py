@@ -75,10 +75,10 @@ class CoverageGeometryTests(unittest.TestCase):
         }
         self.assertFalse(_geometry_intersects_bbox(geometry, (4, 4, 6, 6)))
 
-    @patch("lidar_core.aws_operations._opentopography_candidates", return_value={})
-    @patch("lidar_core.aws_operations.ensure_wesm_metadata", return_value={})
-    @patch("lidar_core.aws_operations._query_tnm_products", return_value=[])
-    @patch("lidar_core.aws_operations.ensure_aws_index")
+    @patch("lidar_core.catalogs.opentopography._opentopography_candidates", return_value={})
+    @patch("lidar_core.catalogs.usgs.ensure_wesm_metadata", return_value={})
+    @patch("lidar_core.catalogs.usgs._query_tnm_products", return_value=[])
+    @patch("lidar_core.catalogs.ept.ensure_aws_index")
     def test_selection_uses_real_coverage_not_envelope(
         self, mock_index, _mock_tnm, _mock_wesm, _mock_opentopography
     ):
@@ -301,10 +301,10 @@ class WesmSelectionTests(unittest.TestCase):
             "mose11county1b24",
         )
 
-    @patch("lidar_core.aws_operations._opentopography_candidates", return_value={})
-    @patch("lidar_core.aws_operations._ept_candidates", return_value={})
-    @patch("lidar_core.aws_operations._query_tnm_products")
-    @patch("lidar_core.aws_operations.ensure_wesm_metadata")
+    @patch("lidar_core.catalogs.opentopography._opentopography_candidates", return_value={})
+    @patch("lidar_core.catalogs.ept._ept_candidates", return_value={})
+    @patch("lidar_core.catalogs.usgs._query_tnm_products")
+    @patch("lidar_core.catalogs.usgs.ensure_wesm_metadata")
     def test_wesm_first_discovery_finds_non_ept_source_dem(
         self, mock_wesm, mock_query, _mock_ept, _mock_opentopography
     ):
@@ -325,8 +325,8 @@ class WesmSelectionTests(unittest.TestCase):
         self.assertEqual(datasets[0]["props"]["source_type"], "source_dem")
         self.assertTrue(datasets[0]["props"]["covers_aoi"])
 
-    @patch("lidar_core.aws_operations._remote_raster_resolution", return_value=0.25)
-    @patch("lidar_core.aws_operations._fetch_json_url")
+    @patch("lidar_core.catalogs.opentopography._remote_raster_resolution", return_value=0.25)
+    @patch("lidar_core.catalogs.opentopography._fetch_json_url")
     def test_opentopography_catalog_builds_public_dtm_candidate(
         self, mock_fetch, _mock_resolution
     ):

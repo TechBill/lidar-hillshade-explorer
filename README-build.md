@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 6.3.1
+# LiDAR Hillshade Explorer 6.3.2
 
 A simplified desktop LiDAR hillshade application for non-technical users.
 
@@ -38,7 +38,7 @@ Development mode requires system-level tools (install via QGIS/Homebrew/etc.):
 - PDAL (LiDAR processing + DEM generation)
 - GDAL (hillshade generation and KMZ export)
 
-The standalone 6.3.1 release bundles these tools and does not require users to
+The standalone 6.3.2 release bundles these tools and does not require users to
 install Python, PDAL, GDAL, PROJ, Homebrew, or QGIS.
 
 ### Python Dependencies
@@ -122,7 +122,15 @@ LiDARHillshadeExplorer/
 │   ├── hillshade_viewer.py   # Pillow-based interactive viewer
 │   ├── processing.py         # Workflow orchestrator
 │   ├── lidar_core/
-│   │   ├── aws_operations.py     # Dataset discovery & download
+│   │   ├── aws_operations.py     # Backward-compatible public facade
+│   │   ├── catalogs/
+│   │   │   ├── usgs.py           # WESM/TNM discovery
+│   │   │   ├── opentopography.py # Public DTM/STAC discovery
+│   │   │   └── ept.py            # AWS EPT availability
+│   │   ├── delivery/
+│   │   │   ├── point_cloud.py    # EPT/LPC download and clipping
+│   │   │   └── raster_dem.py     # Source DEM crop/mosaic
+│   │   ├── ranking.py            # Metadata enrichment and ranking
 │   │   ├── dem_generator.py      # TIN DEM creation
 │   │   ├── hillshade_engine.py   # Hillshade generation
 │   │   └── kmz_export.py         # KMZ export
