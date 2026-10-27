@@ -242,14 +242,16 @@ def tifs_to_kmz(
             _log(log, f"Processing {tif_path.name} ({idx + 1}/{total_files})...")
 
             # Step 1: Convert GeoTIFF to PNG
-            # Extract clean name from TIF filename (remove prefix, year, _dem_arch_)
+            # Extract a clean style name from the TIF filename.
             tif_name = tif_path.stem
 
             # Extract just the hillshade type part
             if '_classic' in tif_name:
                 clean_name = "Classic"
+            elif '_preset_' in tif_name:
+                clean_name = tif_name.split('_preset_')[-1].replace('_', ' ')
             elif '_arch_' in tif_name:
-                # Extract everything after _arch_
+                # Continue to export output created by older app versions.
                 clean_name = tif_name.split('_arch_')[-1].replace('_', ' ')
             elif '_custom' in tif_name:
                 clean_name = "Custom"

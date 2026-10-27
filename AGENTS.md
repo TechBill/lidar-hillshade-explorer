@@ -230,7 +230,7 @@ the viewer first, or - as happened while verifying a fix - driving the
 frozen binary directly for a self-test and `kill`ing it) leaves the
 previous location's `.tif`/`.laz`/DEM files sitting there. Confirmed live:
 `output/hillshades/` ended up holding two locations' `_classic.tif` /
-`_arch_*.tif` at once this way. `hillshade_viewer.py`'s export dialogs
+`_preset_*.tif` at once this way. `hillshade_viewer.py`'s export dialogs
 (`_show_kmz_export_dialog`, `_show_tif_export_dialog`) now filter
 `hillshades_dir.glob("*.tif")` down to `p.stem.startswith(f"{self.dem_path.stem}_")`
 for exactly this reason - don't remove that filter or re-introduce an

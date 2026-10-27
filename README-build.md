@@ -26,7 +26,7 @@ User enters coordinates, clicks one button, and the app automatically finds LiDA
   - Viewport-only rendering for responsive navigation on large rasters
 - **Multiple Styles**:
   - Classic hillshade
-  - 5 archaeology presets
+  - 6 terrain presets
   - Custom parameters (z-factor, altitude, azimuth, multidirectional, combined)
 - **KMZ Export**: Export to Google Earth format
 
@@ -67,7 +67,7 @@ python app.py
 6. View and style hillshade in built-in viewer
    - Use zoom +/- buttons or mouse wheel
    - Drag with left mouse to pan
-   - Change hillshade style (Classic/Archaeology/Custom)
+   - Change hillshade style (Classic/Terrain Presets/Custom)
    - Click "Apply" to regenerate with new style
 7. Export to KMZ if desired
 
@@ -88,7 +88,8 @@ python app.py
 
 **Style Selection:**
 - **Classic**: Standard hillshade (z=1.0, alt=45°, az=315°)
-- **Archaeology Presets**: Choose from 5 archaeological visualization presets
+- **Terrain Presets**: Choose from 6 directional, multidirectional, and
+  Combined terrain-visualization presets
 - **Custom**: Set your own z-factor, altitude, azimuth, multidirectional, and
   combined shading options. Multidirectional and Combined are mutually
   exclusive.
@@ -136,13 +137,14 @@ LiDARHillshadeExplorer/
     └── logs/                 # Error logs
 ```
 
-## Archaeology Presets
+## Terrain Presets
 
-1. **Archaeology – Soft (Multi)**: z=1.0, alt=25°, multidirectional
-2. **Archaeology – Very Low Sun (Multi)**: z=1.0, alt=20°, multidirectional
-3. **Archaeology – Higher Sun (Multi)**: z=1.0, alt=35°, multidirectional
-4. **Archaeology – Strong Relief (Multi)**: z=1.5, alt=30°, multidirectional
+1. **Soft Detail (Multi)**: z=1.0, alt=25°, multidirectional
+2. **Very Low Sun (Multi)**: z=1.0, alt=20°, multidirectional
+3. **Higher Sun (Multi)**: z=1.0, alt=35°, multidirectional
+4. **Strong Relief (Multi)**: z=1.5, alt=30°, multidirectional
 5. **Directional Check – NW Low Sun**: z=1.0, alt=30°, az=315°
+6. **Combined Detail**: z=2.0, alt=25°, az=315°, combined
 
 ## Building Executable
 

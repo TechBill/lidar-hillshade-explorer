@@ -19,6 +19,10 @@ This tool is designed for research and visualization. It is **not survey-grade G
   product while still considering coverage, validation, quality, and date.
 - Dataset metadata now identifies OpenTopography delivery and preserves its
   citation, license, coordinate system, survey date, and publication date.
+- Renamed the viewer's preset group to **Terrain Presets** and removed the
+  former domain-specific wording from every preset name.
+- Added **Combined Detail** to the preset list using z=2.0, altitude=25°,
+  azimuth=315°, and GDAL Combined lighting.
 
 ---
 
@@ -76,7 +80,7 @@ This tool is designed for research and visualization. It is **not survey-grade G
 
 - Fixed the Export GeoTIFF/KMZ file-selection lists sometimes showing what
   looked like duplicate entries (two "Classic.tif", two of the same
-  Archaeology preset, etc). These lists were including every hillshade left
+  terrain preset, etc). These lists were including every hillshade left
   in the shared output folder, including ones from a previously viewed
   location if you generated more than one hillshade without returning to
   the main menu in between — and the checkbox labels drop the location so
@@ -139,7 +143,8 @@ This tool is designed for research and visualization. It is **not survey-grade G
 - View LiDAR dataset metadata: acquisition dates, quality level,
   source DEM resolution, publication date, horizontal/vertical CRS, and geoid
 - Viewport-based rendering for smooth zooming and panning on large hillshades
-- 5 archaeology presets for feature detection (low sun, multidirectional)
+- 6 terrain-visualization presets with directional, multidirectional, and
+  Combined lighting
 - Custom hillshade parameters (z-factor, altitude, azimuth, multidirectional,
   and combined shading)
 - Export to GeoTIFF or KMZ (Google Earth)
@@ -260,7 +265,8 @@ the measured point spacing and generated DEM resolution.
 ### Hillshade Styles
 
 - **Classic** — Standard hillshade (z=1.0, alt=45°, az=315°)
-- **Archaeology Presets** — 5 presets with low sun angles and multidirectional lighting
+- **Terrain Presets** — 6 presets with low-sun, multidirectional, directional,
+  and Combined lighting
 - **Custom** — Set your own z-factor, altitude, azimuth, multidirectional, and
   combined shading options. Multidirectional and Combined cannot be enabled
   together.

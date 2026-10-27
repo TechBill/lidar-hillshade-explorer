@@ -3,7 +3,7 @@
 Hillshade generation for LiDAR Hillshade Explorer.
 
 Generates hillshades from DEMs using GDAL's gdaldem.
-Includes classic, 5 archaeology presets, and custom parameters.
+Includes classic, six terrain presets, and custom parameters.
 """
 
 from __future__ import annotations
@@ -24,24 +24,24 @@ STD_Z = 1.0
 STD_ALT = 45.0
 STD_AZ = 315.0
 
-# 5 Archaeology presets (reduced from original 12)
-ARCH_PRESETS: Dict[str, Dict[str, Any]] = {
-    "Archaeology – Soft (Multi)": {
+# Terrain-visualization presets.
+TERRAIN_PRESETS: Dict[str, Dict[str, Any]] = {
+    "Soft Detail (Multi)": {
         "z": 1.0,
         "alt": 25.0,
         "multi": True,
     },
-    "Archaeology – Very Low Sun (Multi)": {
+    "Very Low Sun (Multi)": {
         "z": 1.0,
         "alt": 20.0,
         "multi": True,
     },
-    "Archaeology – Higher Sun (Multi)": {
+    "Higher Sun (Multi)": {
         "z": 1.0,
         "alt": 35.0,
         "multi": True,
     },
-    "Archaeology – Strong Relief (Multi)": {
+    "Strong Relief (Multi)": {
         "z": 1.5,
         "alt": 30.0,
         "multi": True,
@@ -51,6 +51,13 @@ ARCH_PRESETS: Dict[str, Dict[str, Any]] = {
         "alt": 30.0,
         "az": 315.0,
         "multi": False,
+    },
+    "Combined Detail": {
+        "z": 2.0,
+        "alt": 25.0,
+        "az": 315.0,
+        "multi": False,
+        "combined": True,
     },
 }
 
@@ -228,26 +235,31 @@ def generate_classic_hillshade(
     return output_path
 
 
-def generate_archaeology_hillshade(
+def generate_preset_hillshade(
     dem_path: Path,
     preset_name: str,
     log: LogFunc = None,
     cancel_check: Optional[callable] = None
 ) -> Path:
-    """Generate archaeology hillshade using one of the 5 presets."""
-    if preset_name not in ARCH_PRESETS:
+    """Generate a hillshade using one of the named terrain presets."""
+    if preset_name not in TERRAIN_PRESETS:
         raise ValueError(f"Unknown preset: {preset_name}")
 
-    preset = ARCH_PRESETS[preset_name]
+    preset = TERRAIN_PRESETS[preset_name]
     hillshades_dir = get_output_dir() / "hillshades"
     hillshades_dir.mkdir(parents=True, exist_ok=True)
 
     safe_name = preset_name.replace(" ", "_").replace("–", "").replace("(", "").replace(")", "")
-    output_path = hillshades_dir / f"{dem_path.stem}_arch_{safe_name}.tif"
+    output_path = hillshades_dir / f"{dem_path.stem}_preset_{safe_name}.tif"
 
-    _log(log, f"=== Generating Archaeology Hillshade: {preset_name} ===")
+    _log(log, f"=== Generating Terrain Preset: {preset_name} ===")
     _log(log, f"Z-factor: {preset['z']}, Altitude: {preset['alt']}°")
-    _log(log, "Multidirectional: Yes" if preset["multi"] else f"Azimuth: {preset.get('az', 'N/A')}°")
+    if preset["multi"]:
+        _log(log, "Multidirectional: Yes")
+    elif preset.get("combined"):
+        _log(log, f"Combined: Yes, Azimuth: {preset['az']}°")
+    else:
+        _log(log, f"Azimuth: {preset.get('az', 'N/A')}°")
 
     config = load_config()
     try:
@@ -259,6 +271,8 @@ def generate_archaeology_hillshade(
     cmd = [gdaldem, "hillshade", "-z", str(preset["z"]), "-alt", str(preset["alt"])]
     if preset["multi"]:
         cmd.append("-multidirectional")
+    elif preset.get("combined"):
+        cmd.extend(["-az", str(preset["az"]), "-combined"])
     elif "az" in preset:
         cmd.extend(["-az", str(preset["az"])])
     cmd.extend(["-compute_edges", str(dem_path), str(output_path)])

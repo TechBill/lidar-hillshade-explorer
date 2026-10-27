@@ -224,8 +224,8 @@ Standard hillshade with default parameters:
 - Altitude: 45°
 - Azimuth: 315°
 
-### Archaeology Presets
-Five presets optimized for archaeological feature detection:
+### Terrain Presets
+Six presets for comparing terrain under different lighting models:
 
 | Preset | Z-factor | Altitude | Type |
 |--------|----------|----------|------|
@@ -234,6 +234,9 @@ Five presets optimized for archaeological feature detection:
 | Higher Sun (Multi) | 1.0 | 35° | Multidirectional |
 | Strong Relief (Multi) | 1.5 | 30° | Multidirectional |
 | Directional Check – NW Low Sun | 1.0 | 30° | Directional (315°) |
+| Combined Detail | 2.0 | 25° | Combined (315°) |
+
+**Combined Detail** matches the Hi-Res terrain preset used by Subterrix.
 
 ### Custom
 Set your own parameters:
@@ -340,7 +343,9 @@ If the hillshade looks "too flat" or "not detailed enough," try:
 - testing a nearby ridge or valley
 
 ## Try different styles
-The archaeology presets with low sun angles (20–30°) and multidirectional lighting are excellent for revealing subtle terrain features that are invisible in the classic hillshade.
+The terrain presets with low sun angles (20–30°) and multidirectional or
+Combined lighting can reveal subtle relief that is difficult to see in the
+classic hillshade.
 
 ---
 

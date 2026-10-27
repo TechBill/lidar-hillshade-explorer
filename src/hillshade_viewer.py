@@ -19,10 +19,10 @@ from PIL import Image, ImageTk
 import rasterio
 
 from lidar_core.hillshade_engine import (
-    ARCH_PRESETS,
+    TERRAIN_PRESETS,
     custom_hillshade_path,
     generate_classic_hillshade,
-    generate_archaeology_hillshade,
+    generate_preset_hillshade,
     generate_custom_hillshade,
 )
 
@@ -223,7 +223,7 @@ class HillshadeViewer:
         self.style_var = tk.StringVar(value="Classic")
         ttk.Radiobutton(left_panel, text="Classic", variable=self.style_var, value="Classic",
                        command=self._on_style_changed).pack(anchor=tk.W, padx=20, pady=2)
-        ttk.Radiobutton(left_panel, text="Archaeology Presets", variable=self.style_var, value="Archaeology",
+        ttk.Radiobutton(left_panel, text="Terrain Presets", variable=self.style_var, value="Presets",
                        command=self._on_style_changed).pack(anchor=tk.W, padx=20, pady=2)
         ttk.Radiobutton(left_panel, text="Custom", variable=self.style_var, value="Custom",
                        command=self._on_style_changed).pack(anchor=tk.W, padx=20, pady=2)
@@ -445,15 +445,15 @@ class HillshadeViewer:
             ).pack(anchor=tk.W)
             self.apply_btn.config(state=tk.NORMAL)
 
-        elif style == "Archaeology":
+        elif style == "Presets":
             # Preset dropdown
             ttk.Label(self.dynamic_frame, text="Preset:", font=("Helvetica", 9, "bold")).pack(anchor=tk.W, pady=(5, 2))
 
-            self.preset_var = tk.StringVar(value=list(ARCH_PRESETS.keys())[0])
+            self.preset_var = tk.StringVar(value=list(TERRAIN_PRESETS.keys())[0])
             preset_list = ttk.Combobox(
                 self.dynamic_frame,
                 textvariable=self.preset_var,
-                values=list(ARCH_PRESETS.keys()),
+                values=list(TERRAIN_PRESETS.keys()),
                 state="readonly",
                 width=25
             )
@@ -540,11 +540,13 @@ class HillshadeViewer:
     def _update_preset_info(self):
         """Update preset information label."""
         preset_name = self.preset_var.get()
-        if preset_name in ARCH_PRESETS:
-            preset = ARCH_PRESETS[preset_name]
+        if preset_name in TERRAIN_PRESETS:
+            preset = TERRAIN_PRESETS[preset_name]
             info = f"Z={preset['z']}, Alt={preset['alt']}°"
             if preset['multi']:
                 info += "\nMultidirectional"
+            elif preset.get('combined'):
+                info += f"\nCombined, Az={preset['az']}°"
             else:
                 info += f"\nAz={preset.get('az', 'N/A')}°"
             self.preset_info_label.config(text=info)
@@ -580,11 +582,11 @@ class HillshadeViewer:
 
         if style == "Classic":
             return hillshades_dir / f"{stem}_classic.tif"
-        elif style == "Archaeology":
+        elif style == "Presets":
             preset_name = self.preset_var.get()
             # Use same sanitization as in hillshade_engine.py
             safe_name = preset_name.replace(" ", "_").replace("–", "").replace("(", "").replace(")", "")
-            return hillshades_dir / f"{stem}_arch_{safe_name}.tif"
+            return hillshades_dir / f"{stem}_preset_{safe_name}.tif"
         elif style == "Custom":
             try:
                 z = float(self.z_var.get())
@@ -635,10 +637,10 @@ class HillshadeViewer:
                         log=log_msg
                     )
                 )
-            elif style == "Archaeology":
+            elif style == "Presets":
                 preset_name = self.preset_var.get()
                 self._regenerate_hillshade_async(
-                    lambda: generate_archaeology_hillshade(
+                    lambda: generate_preset_hillshade(
                         self.dem_path,
                         preset_name,
                         log=log_msg
@@ -848,8 +850,11 @@ class HillshadeViewer:
             tif_name = tif_file.stem
             if '_classic' in tif_name:
                 display_name = "Classic.tif"
+            elif '_preset_' in tif_name:
+                style_part = tif_name.split('_preset_')[-1].replace('_', ' ')
+                display_name = f"{style_part}.tif"
             elif '_arch_' in tif_name:
-                # Extract everything after _arch_ and clean it up
+                # Continue to display output created by older app versions.
                 style_part = tif_name.split('_arch_')[-1].replace('_', ' ')
                 display_name = f"{style_part}.tif"
             elif '_custom' in tif_name:
@@ -1056,7 +1061,11 @@ class HillshadeViewer:
             tif_name = tif_file.stem
             if "_classic" in tif_name:
                 display_name = "Classic.tif"
+            elif "_preset_" in tif_name:
+                style_part = tif_name.split("_preset_")[-1].replace("_", " ")
+                display_name = f"{style_part}.tif"
             elif "_arch_" in tif_name:
+                # Continue to display output created by older app versions.
                 style_part = tif_name.split("_arch_")[-1].replace("_", " ")
                 display_name = f"{style_part}.tif"
             elif "_custom" in tif_name:
