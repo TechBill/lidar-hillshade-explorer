@@ -16,6 +16,8 @@ This tool is designed for research and visualization. It is **not survey-grade G
   each provider easier to test and improve independently.
 - Made the Hillshade Viewer open tall enough to show its complete sidebar when
   the display permits, while retaining sidebar scrolling on smaller screens.
+- The opaque NoData preference now uses the same style-matched neutral fill in
+  the viewer and KMZ export, while preserving GeoTIFF NoData metadata.
 
 ---
 
@@ -305,8 +307,8 @@ Accessed via the **Advanced Settings** button on the main screen:
 
 - **Custom Binary Paths** — Override bundled PDAL/GDAL with your own binaries
 - **Custom Terrain Settings** — Control TIN buffer and edge limits, IDW fallback, fill distance, smoothing, and deterministic mode
-- **Export Settings** — Optionally render KMZ NoData/water gaps as opaque
-  neutral gray without changing the DEM or GeoTIFF
+- **Export Settings** — Optionally render Viewer and KMZ NoData/water gaps as
+  the same opaque neutral gray without changing the DEM or GeoTIFF
 - **Log Window** — Real-time processing log for troubleshooting
 
 ---

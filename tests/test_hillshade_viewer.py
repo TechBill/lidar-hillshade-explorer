@@ -1,8 +1,14 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 import tkinter as tk
+from unittest.mock import patch
+
+import numpy as np
+import rasterio
+from rasterio.transform import from_origin
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -88,6 +94,43 @@ class ViewerWindowSizeTests(unittest.TestCase):
 
     def test_existing_baseline_size_is_preserved_for_short_content(self):
         self.assertEqual(viewer_window_size(1920, 1080, 650), (1200, 800))
+
+
+class ViewerNoDataRenderingTests(unittest.TestCase):
+    def test_opaque_preference_matches_kmz_fill_without_changing_geotiff(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "sample_hillshade.tif"
+            data = np.full((5, 5), 180, dtype=np.uint8)
+            data[2, 2] = 0
+            with rasterio.open(
+                path,
+                "w",
+                driver="GTiff",
+                width=5,
+                height=5,
+                count=1,
+                dtype="uint8",
+                crs="EPSG:4326",
+                transform=from_origin(-90.0, 38.0, 0.00001, 0.00001),
+                nodata=0,
+            ) as destination:
+                destination.write(data, 1)
+
+            viewer = HillshadeViewer.__new__(HillshadeViewer)
+            viewer._reset_view_to_fit = lambda: None
+            viewer.redraw = lambda: None
+            with patch(
+                "hillshade_viewer.load_config",
+                return_value={"preferences": {"opaque_kmz_nodata": True}},
+            ):
+                viewer._load_and_display_hillshade(path)
+
+            self.assertEqual(viewer._pil_image.mode, "RGB")
+            self.assertEqual(viewer._pil_image.getpixel((2, 2)), (180, 180, 180))
+            with rasterio.open(path) as source:
+                self.assertEqual(source.nodata, 0)
+                self.assertEqual(source.read(1)[2, 2], 0)
+                self.assertTrue(source.read(1, masked=True).mask[2, 2])
 
 
 if __name__ == "__main__":

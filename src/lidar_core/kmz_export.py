@@ -51,15 +51,36 @@ def _hillshade_image(gray, valid, opaque_nodata: bool, nodata_gray: int | None =
     return image
 
 
+def render_hillshade_image(data, opaque_nodata: bool = False):
+    """Render a masked hillshade consistently for the viewer and KMZ export."""
+    import numpy as np
+
+    valid = ~np.ma.getmaskarray(data)
+    values = np.ma.asarray(data).filled(0)
+    if values.dtype == np.uint8:
+        gray = values
+    elif np.any(valid):
+        valid_values = values[valid]
+        low = float(valid_values.min())
+        high = float(valid_values.max())
+        if high > low:
+            gray = np.clip(
+                (values - low) * 255.0 / (high - low), 0, 255
+            ).astype(np.uint8)
+        else:
+            gray = np.zeros(values.shape, dtype=np.uint8)
+    else:
+        gray = np.zeros(values.shape, dtype=np.uint8)
+    return _hillshade_image(gray, valid, opaque_nodata)
+
+
 def _tif_to_png_and_bounds(
     tif_path: Path,
     png_path: Path,
     opaque_nodata: bool = False,
 ) -> dict:
     """Render a GeoTIFF to PNG and return its WGS84 overlay bounds."""
-    import numpy as np
     import rasterio
-    from PIL import Image
     from rasterio.warp import transform_bounds
 
     with rasterio.open(tif_path) as src:
@@ -71,22 +92,7 @@ def _tif_to_png_and_bounds(
             src.crs, "EPSG:4326", *src.bounds, densify_pts=21
         )
 
-        valid = ~np.ma.getmaskarray(data)
-        values = data.filled(0)
-        if values.dtype == np.uint8:
-            gray = values
-        elif np.any(valid):
-            valid_values = values[valid]
-            low = float(valid_values.min())
-            high = float(valid_values.max())
-            if high > low:
-                gray = np.clip((values - low) * 255.0 / (high - low), 0, 255).astype(np.uint8)
-            else:
-                gray = np.zeros(values.shape, dtype=np.uint8)
-        else:
-            gray = np.zeros(values.shape, dtype=np.uint8)
-
-        image = _hillshade_image(gray, valid, opaque_nodata)
+        image = render_hillshade_image(data, opaque_nodata=opaque_nodata)
         image.save(png_path, format="PNG")
 
     return {

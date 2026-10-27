@@ -25,6 +25,8 @@ from lidar_core.hillshade_engine import (
     generate_preset_hillshade,
     generate_custom_hillshade,
 )
+from lidar_core.kmz_export import render_hillshade_image
+from utils.config import load_config
 
 
 def viewer_window_size(
@@ -733,21 +735,20 @@ class HillshadeViewer:
     def _load_and_display_hillshade(self, hillshade_path: Path):
         """Load hillshade from file and display."""
         try:
-            # Read GeoTIFF with rasterio and convert to PIL Image
+            # Respect the GeoTIFF mask. When requested, use the exact same
+            # opaque neutral NoData rendering as KMZ export so the preview is
+            # representative without modifying the analytical GeoTIFF.
             with rasterio.open(hillshade_path) as src:
-                data = src.read(1)
+                data = src.read(1, masked=True)
 
-            # Normalize to 0-255 for display
-            import numpy as np
-            data_min = data.min()
-            data_max = data.max()
-            if data_max > data_min:
-                data_normalized = ((data - data_min) / (data_max - data_min) * 255).astype(np.uint8)
-            else:
-                data_normalized = np.zeros_like(data, dtype=np.uint8)
-
-            # Convert to PIL Image
-            self._pil_image = Image.fromarray(data_normalized, mode='L')
+            opaque_nodata = bool(
+                load_config().get("preferences", {}).get(
+                    "opaque_kmz_nodata", False
+                )
+            )
+            self._pil_image = render_hillshade_image(
+                data, opaque_nodata=opaque_nodata
+            )
 
             # Reset view to fit
             self._reset_view_to_fit()

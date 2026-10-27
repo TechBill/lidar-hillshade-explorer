@@ -304,11 +304,12 @@ Click **Reset to Defaults** to restore the original values.
 
 ## Export Settings
 
-Enable **Fill KMZ NoData areas with opaque neutral gray** to stop satellite
+Enable **Fill Viewer and KMZ NoData with opaque neutral gray** to use the same
+flat, style-matched fill in the preview and exported KMZ. This stops satellite
 imagery from showing through water bodies and other areas with no reliable
-LiDAR ground returns. This affects KMZ rendering only;
-the source DEM and exported GeoTIFF retain their original NoData values. The
-option is disabled by default.
+LiDAR ground returns. The source DEM and exported GeoTIFF retain their original
+NoData values and mask; third-party GIS software controls how that mask is
+displayed. The option is disabled by default.
 
 ## Log Window
 
