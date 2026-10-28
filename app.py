@@ -77,7 +77,7 @@ if not getattr(sys, 'frozen', False):
 
 from main_gui import HillshadeExplorerApp
 
-APP_VERSION = "6.5.4"
+APP_VERSION = "6.5.5"
 WINDOWS_APP_ID = "com.techbill.lidar-hillshade-explorer"
 
 

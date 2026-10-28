@@ -112,6 +112,8 @@ pyramid: those structures have failed in the web importer. Keep the archive at
 that compatibility limit. Every edge tile must use its own exact transformed
 WGS84 bounds. Render the whole source consistently before cropping so neutral
 NoData tone and grayscale normalization cannot vary at tile seams.
+The suggested KMZ filename includes coordinates, area, and the selected style
+(for example, `37.7751_-122.4194_0.25sqmi_Combined_Detail.kmz`).
 
 ## DEM gap filling
 
@@ -140,6 +142,8 @@ temporary filled reference; valid source pixels must remain exact, while the
 exported NoData value is intentionally cleared. The current hillshade remains
 one 8-bit grayscale band; do not convert it to RGB. Keep the conversion off the
 Tk UI thread.
+The GeoTIFF save dialog suggests only the selected style name (for example,
+`Combined Detail.tif`), without the internal `_preset_` filename component.
 
 ## Combined USGS/OpenTopography/NOAA/USIEI discovery and delivery
 
