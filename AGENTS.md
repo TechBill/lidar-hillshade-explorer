@@ -89,15 +89,16 @@ The `"version": 1` key in `get_default_config()` in `src/utils/config.py` is
 an unrelated config-schema version, not the app version — don't touch it
 when bumping app version.
 
-## Viewer and KMZ NoData rendering
+## Viewer, COG, and KMZ NoData rendering
 
 The Advanced Settings preference `preferences.opaque_kmz_nodata` is off by
-default. When enabled, both the Hillshade Viewer and KMZ export render
+default. When enabled, the Hillshade Viewer, COG export, and KMZ export render
 masked/NoData pixels as the same opaque neutral gray chosen from the hillshade
-instead of alpha 0. This is a display operation only: never use this preference
-to overwrite DEM elevations, remove GeoTIFF NoData metadata, or synthesize
-underwater terrain. The source DEM and GeoTIFF must remain analytically
-unchanged.
+instead of alpha 0. The exported COG stores this display fill as visible values
+and clears its NoData marker so other GIS viewers show the same result. This is
+a display-export operation only: never use this preference to overwrite DEM
+elevations, modify the working hillshade, or synthesize underwater terrain.
+The source DEM and working GeoTIFF must remain analytically unchanged.
 
 ## Cloud Optimized GeoTIFF export
 
@@ -112,8 +113,11 @@ The export is written to a temporary sibling file, validated, and only then
 atomically replaces the chosen destination. Validation must continue checking
 `LAYOUT=COG`, 512 x 512 blocks, internal overviews, raster/georeferencing and
 band-property equality, source metadata and descriptions, and full-resolution
-GDAL band checksums. The current hillshade remains one 8-bit grayscale band;
-do not convert it to RGB. Keep the conversion off the Tk UI thread.
+GDAL band checksums. In opaque NoData mode, validation compares the COG with a
+temporary filled reference; valid source pixels must remain exact, while the
+exported NoData value is intentionally cleared. The current hillshade remains
+one 8-bit grayscale band; do not convert it to RGB. Keep the conversion off the
+Tk UI thread.
 
 ## Combined USGS/OpenTopography/NOAA/USIEI discovery and delivery
 

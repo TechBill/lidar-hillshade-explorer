@@ -22,7 +22,7 @@ def _log(log: LogFunc, msg: str) -> None:
         log(msg)
 
 
-def _neutral_gray(gray, valid) -> int:
+def neutral_gray_value(gray, valid) -> int:
     """Choose a visually compatible neutral shade from valid hillshade pixels."""
     import numpy as np
 
@@ -42,7 +42,7 @@ def _hillshade_image(gray, valid, opaque_nodata: bool, nodata_gray: int | None =
     if opaque_nodata:
         rendered = gray.copy()
         rendered[~valid] = (
-            _neutral_gray(gray, valid) if nodata_gray is None else nodata_gray
+            neutral_gray_value(gray, valid) if nodata_gray is None else nodata_gray
         )
         return Image.fromarray(rendered, mode="L").convert("RGB")
 

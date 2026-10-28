@@ -1,4 +1,4 @@
-"""Lossless Cloud Optimized GeoTIFF export and validation."""
+"""Cloud Optimized GeoTIFF export and validation."""
 
 from __future__ import annotations
 
@@ -8,8 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple
 
+import numpy as np
 import rasterio
 from rasterio.shutil import copy as raster_copy
+
+from lidar_core.kmz_export import neutral_gray_value
 
 
 COG_CREATION_OPTIONS = {
@@ -119,8 +122,36 @@ def validate_cog(source_path: Path, cog_path: Path) -> CogValidation:
     return CogValidation(layout, block_shapes, overview_levels, exported_checksums)
 
 
-def export_cog(source_path: Path, destination_path: Path) -> CogValidation:
-    """Create and validate a lossless COG, replacing the destination atomically."""
+def _create_opaque_nodata_reference(source_path: Path, reference_path: Path) -> None:
+    """Copy a hillshade and replace only masked pixels with its neutral gray."""
+    with rasterio.open(source_path) as source:
+        if source.count != 1 or source.dtypes != ("uint8",):
+            raise RuntimeError(
+                "Opaque NoData COG export requires one 8-bit hillshade band"
+            )
+        masked = source.read(1, masked=True)
+        valid = ~np.ma.getmaskarray(masked)
+        gray = masked.filled(0)
+        rendered = gray.copy()
+        rendered[~valid] = neutral_gray_value(gray, valid)
+
+    # Start from a GDAL copy so dataset/band metadata, descriptions, color
+    # interpretation, and georeferencing all survive the display-only change.
+    raster_copy(source_path, reference_path, driver="GTiff", strict=True)
+    with rasterio.open(reference_path, "r+") as reference:
+        reference.write(rendered, 1)
+        # The filled pixels must be treated as visible values by GIS viewers.
+        reference.nodata = None
+        reference.write_mask(np.full(rendered.shape, 255, dtype=np.uint8))
+
+
+def export_cog(
+    source_path: Path,
+    destination_path: Path,
+    *,
+    opaque_nodata: bool = False,
+) -> CogValidation:
+    """Create and validate a COG, replacing the destination atomically."""
     source_path = Path(source_path)
     destination_path = Path(destination_path)
     if not source_path.is_file():
@@ -137,15 +168,27 @@ def export_cog(source_path: Path, destination_path: Path) -> CogValidation:
     temporary_path.unlink()
 
     try:
+        validation_source = source_path
+        reference_directory = None
+        if opaque_nodata:
+            reference_directory = tempfile.TemporaryDirectory(
+                prefix=f".{destination_path.stem}_reference_",
+                dir=destination_path.parent,
+            )
+            validation_source = Path(reference_directory.name) / "opaque.tif"
+            _create_opaque_nodata_reference(source_path, validation_source)
+
         raster_copy(
-            source_path,
+            validation_source,
             temporary_path,
             driver="COG",
             strict=True,
             **COG_CREATION_OPTIONS,
         )
-        validation = validate_cog(source_path, temporary_path)
+        validation = validate_cog(validation_source, temporary_path)
         temporary_path.replace(destination_path)
         return validation
     finally:
+        if "reference_directory" in locals() and reference_directory is not None:
+            reference_directory.cleanup()
         temporary_path.unlink(missing_ok=True)

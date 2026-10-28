@@ -81,6 +81,76 @@ class CloudOptimizedGeoTiffExportTests(unittest.TestCase):
             self.assertEqual(rendered.mode, "RGBA")
             self.assertEqual(rendered.size, (width, height))
 
+    def test_opaque_nodata_matches_viewer_and_preserves_valid_pixels(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "source.tif"
+            export_path = Path(temp_dir) / "exported.tif"
+            height, width = 700, 900
+            rows, columns = np.indices((height, width), dtype=np.uint32)
+            data = ((rows * 11 + columns * 23) % 254 + 1).astype(np.uint8)
+            nodata_area = np.zeros((height, width), dtype=bool)
+            nodata_area[80:180, 120:260] = True
+            data[nodata_area] = 0
+
+            with rasterio.open(
+                source_path,
+                "w",
+                driver="GTiff",
+                width=width,
+                height=height,
+                count=1,
+                dtype="uint8",
+                crs="EPSG:26915",
+                transform=from_origin(-90.5, 38.5, 0.5, 0.5),
+                nodata=0,
+            ) as source:
+                source.write(data, 1)
+                source.colorinterp = (ColorInterp.gray,)
+                source.set_band_description(1, "Hillshade intensity")
+                source.update_tags(SURVEY="Opaque NoData test")
+
+            with rasterio.open(source_path) as source:
+                masked_source = source.read(1, masked=True)
+                source_checksum = source.checksum(1)
+                expected_image = render_hillshade_image(
+                    masked_source,
+                    opaque_nodata=True,
+                )
+                expected = np.asarray(expected_image)[:, :, 0]
+
+            validation = export_cog(
+                source_path,
+                export_path,
+                opaque_nodata=True,
+            )
+
+            self.assertEqual(validation.layout, "COG")
+            self.assertEqual(validation.block_shapes, ((512, 512),))
+            self.assertTrue(validation.overview_levels)
+
+            with rasterio.open(source_path) as source, rasterio.open(
+                export_path
+            ) as exported:
+                exported_data = exported.read(1)
+                self.assertEqual(source.nodata, 0)
+                self.assertEqual(source.checksum(1), source_checksum)
+                self.assertIsNone(exported.nodata)
+                self.assertTrue(np.all(exported.dataset_mask() == 255))
+                self.assertEqual(exported.count, 1)
+                self.assertEqual(exported.dtypes, ("uint8",))
+                self.assertEqual(exported.colorinterp, (ColorInterp.gray,))
+                self.assertEqual(exported.crs, source.crs)
+                self.assertEqual(exported.transform, source.transform)
+                self.assertEqual(exported.shape, source.shape)
+                self.assertEqual(exported.descriptions, source.descriptions)
+                self.assertEqual(exported.tags()["SURVEY"], "Opaque NoData test")
+                np.testing.assert_array_equal(exported_data, expected)
+                np.testing.assert_array_equal(
+                    exported_data[~nodata_area],
+                    data[~nodata_area],
+                )
+                self.assertTrue(np.all(exported_data[nodata_area] != 0))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1119,7 +1119,7 @@ class HillshadeViewer:
 
         export_status = ttk.Label(
             main_frame,
-            text="Exports as a lossless Cloud Optimized GeoTIFF (COG)",
+            text="Exports as a Cloud Optimized GeoTIFF (COG)",
             foreground="gray",
         )
         export_status.pack(pady=(8, 0))
@@ -1131,7 +1131,7 @@ class HillshadeViewer:
                 export_btn.config(state=tk.NORMAL)
                 cancel_btn.config(state=tk.NORMAL)
                 export_status.config(
-                    text="Exports as a lossless Cloud Optimized GeoTIFF (COG)"
+                    text="Exports as a Cloud Optimized GeoTIFF (COG)"
                 )
                 detail = str(error).strip() or repr(error)
                 messagebox.showerror(
@@ -1183,7 +1183,17 @@ class HillshadeViewer:
                 try:
                     from lidar_core.geotiff_export import export_cog
 
-                    export_cog(selected_path, Path(save_path))
+                    export_config = load_config()
+                    opaque_nodata = bool(
+                        export_config.get("preferences", {}).get(
+                            "opaque_kmz_nodata", False
+                        )
+                    )
+                    export_cog(
+                        selected_path,
+                        Path(save_path),
+                        opaque_nodata=opaque_nodata,
+                    )
                 except Exception as exc:
                     import traceback
 

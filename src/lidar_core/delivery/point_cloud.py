@@ -331,7 +331,7 @@ def _download_product_file(
         raise RuntimeError(f"Unexpected USGS product host: {host or 'missing'}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    request = Request(url, headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5"})
+    request = Request(url, headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5.2"})
     if HAS_CERTIFI:
         ssl_context = ssl.create_default_context(cafile=certifi.where())
     else:

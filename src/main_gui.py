@@ -1210,14 +1210,15 @@ class HillshadeExplorerApp:
         )
         ttk.Checkbutton(
             export_frame,
-            text="Fill Viewer and KMZ NoData with opaque neutral gray",
+            text="Fill Viewer, GeoTIFF, and KMZ NoData with opaque neutral gray",
             variable=opaque_kmz_nodata_var,
         ).pack(anchor=tk.W)
         ttk.Label(
             export_frame,
             text=(
-                "Keeps the preview and KMZ consistent and prevents satellite imagery "
-                "from showing through. DEM and GeoTIFF NoData remain unchanged."
+                "Keeps the preview and exports consistent and prevents background "
+                "imagery from showing through. The source DEM and working hillshade "
+                "remain unchanged."
             ),
             font=("", 9),
             foreground="gray",

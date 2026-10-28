@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer – User Guide (v6.5)
+# LiDAR Hillshade Explorer – User Guide (v6.5.2)
 
 ## Overview
 **LiDAR Hillshade Explorer** is a lightweight desktop app for exploring terrain using LiDAR data.  
@@ -16,7 +16,7 @@ Because LiDAR Hillshade Explorer is distributed as a downloadable app (not from 
 
 ### macOS (Apple Silicon)
 
-Version 6.5 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
+Version 6.5.2 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
 Pro, iMac, Mac mini, Mac Studio, and Mac Pro systems. It runs natively on M1,
 M2, M3, M4, and newer Apple Silicon chips. Intel Macs require a separately
 built x86_64 version.
@@ -268,11 +268,14 @@ After selecting a style, click **Apply Style** to regenerate the hillshade. The 
 ## Exporting
 
 ### Export GeoTIFF
-Save the selected hillshade as a lossless Cloud Optimized GeoTIFF (COG). The
-export retains the original single-band grayscale pixels, CRS, resolution,
-extent, NoData, and metadata while adding 512 x 512 internal tiles, DEFLATE
-compression, and internal overviews for efficient display. COG files remain
-standards-compatible GeoTIFFs and can be opened in GIS software such as QGIS.
+Save the selected hillshade as a Cloud Optimized GeoTIFF (COG). The export
+retains the original single-band grayscale format, CRS, resolution, extent,
+and metadata while adding 512 x 512 internal tiles, DEFLATE compression, and
+internal overviews for efficient display. With opaque NoData fill disabled,
+the pixels and NoData mask remain unchanged. With it enabled, only masked
+pixels receive the same neutral fill shown in the viewer and KMZ; all valid
+pixels remain unchanged. COG files remain standards-compatible GeoTIFFs and
+can be opened in GIS software such as QGIS.
 
 ### Export KMZ
 Export one or more hillshade styles as a KMZ file for viewing in Google Earth. The export dialog lets you:
@@ -311,12 +314,13 @@ Click **Reset to Defaults** to restore the original values.
 
 ## Export Settings
 
-Enable **Fill Viewer and KMZ NoData with opaque neutral gray** to use the same
-flat, style-matched fill in the preview and exported KMZ. This stops satellite
-imagery from showing through water bodies and other areas with no reliable
-LiDAR ground returns. The source DEM and exported GeoTIFF retain their original
-NoData values and mask; third-party GIS software controls how that mask is
-displayed. The option is disabled by default.
+Enable **Fill Viewer, GeoTIFF, and KMZ NoData with opaque neutral gray** to use
+the same flat, style-matched fill in the preview and both exports. This stops
+background imagery from showing through water bodies and other areas with no
+reliable LiDAR ground returns. The source DEM and working hillshade remain
+unchanged. The exported COG stores the fill as visible grayscale values and
+clears its NoData marker so GIS viewers display it consistently. The option is
+disabled by default.
 
 ## Log Window
 
@@ -402,7 +406,7 @@ Enable **Smart Selection** to automatically try the next-ranked WESM work unit.
 
 ## macOS Standalone Release
 
-The version 6.5 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
+The version 6.5.2 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
 Users do not need Homebrew, Python, QGIS, PDAL, or GDAL. Internet access is still
 required to locate and download USGS, OpenTopography, NOAA, and USIEI terrain
 data and periodically refresh USGS metadata.
