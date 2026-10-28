@@ -7,6 +7,7 @@ Based on geoimage-kmz viewer pattern.
 """
 
 import math
+import re
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -26,6 +27,26 @@ from lidar_core.hillshade_engine import (
 )
 from lidar_core.kmz_export import render_hillshade_image
 from utils.config import load_config
+
+
+def hillshade_style_name(path: Path) -> str:
+    """Return the user-facing style represented by a generated hillshade path."""
+    stem = Path(path).stem
+    if "_classic" in stem:
+        return "Classic"
+    if "_preset_" in stem:
+        return stem.split("_preset_")[-1].replace("_", " ")
+    if "_arch_" in stem:
+        return stem.split("_arch_")[-1].replace("_", " ")
+    if "_custom" in stem:
+        return "Custom"
+    return stem
+
+
+def filename_style_component(path: Path) -> str:
+    """Return a portable filename component for a hillshade style."""
+    component = re.sub(r"[^A-Za-z0-9._-]+", "_", hillshade_style_name(path))
+    return component.strip("._-") or "Hillshade"
 
 
 def viewer_window_size(
@@ -879,22 +900,7 @@ class HillshadeViewer:
         # overlays remain within the web import compatibility limit.
         for tif_file in tif_files:
 
-            # Extract clean display name from TIF filename
-            tif_name = tif_file.stem
-            if '_classic' in tif_name:
-                display_name = "Classic.tif"
-            elif '_preset_' in tif_name:
-                style_part = tif_name.split('_preset_')[-1].replace('_', ' ')
-                display_name = f"{style_part}.tif"
-            elif '_arch_' in tif_name:
-                # Continue to display output created by older app versions.
-                style_part = tif_name.split('_arch_')[-1].replace('_', ' ')
-                display_name = f"{style_part}.tif"
-            elif '_custom' in tif_name:
-                display_name = "Custom.tif"
-            else:
-                # Fallback to original name
-                display_name = tif_file.name
+            display_name = f"{hillshade_style_name(tif_file)}.tif"
 
             rb = tk.Radiobutton(
                 scrollable_frame,
@@ -1087,20 +1093,7 @@ class HillshadeViewer:
         selected_var = tk.StringVar(value=current_str)
 
         for tif_file in tif_files:
-            tif_name = tif_file.stem
-            if "_classic" in tif_name:
-                display_name = "Classic.tif"
-            elif "_preset_" in tif_name:
-                style_part = tif_name.split("_preset_")[-1].replace("_", " ")
-                display_name = f"{style_part}.tif"
-            elif "_arch_" in tif_name:
-                # Continue to display output created by older app versions.
-                style_part = tif_name.split("_arch_")[-1].replace("_", " ")
-                display_name = f"{style_part}.tif"
-            elif "_custom" in tif_name:
-                display_name = "Custom.tif"
-            else:
-                display_name = tif_file.name
+            display_name = f"{hillshade_style_name(tif_file)}.tif"
 
             rb = tk.Radiobutton(
                 scrollable_frame,
@@ -1167,7 +1160,7 @@ class HillshadeViewer:
                     ("Cloud Optimized GeoTIFF files", "*.tif"),
                     ("All files", "*.*"),
                 ],
-                initialfile=selected_path.name
+                initialfile=f"{hillshade_style_name(selected_path)}.tif"
             )
             if not save_path:
                 return
@@ -1242,7 +1235,10 @@ class HillshadeViewer:
         sqmi = meta.get('size_sqmi', 0)
 
         # Format coordinates to 4 decimal places
-        default_name = f"{lat:.4f}_{lon:.4f}_{sqmi}sqmi.kmz"
+        style_component = filename_style_component(selected_file)
+        default_name = (
+            f"{lat:.4f}_{lon:.4f}_{sqmi}sqmi_{style_component}.kmz"
+        )
 
         # Ask for save location
         save_path = filedialog.asksaveasfilename(

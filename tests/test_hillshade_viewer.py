@@ -14,7 +14,12 @@ from rasterio.transform import from_origin
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from hillshade_viewer import HillshadeViewer, viewer_window_size  # noqa: E402
+from hillshade_viewer import (  # noqa: E402
+    HillshadeViewer,
+    filename_style_component,
+    hillshade_style_name,
+    viewer_window_size,
+)
 
 
 class _VariableStub:
@@ -94,6 +99,27 @@ class ViewerWindowSizeTests(unittest.TestCase):
 
     def test_existing_baseline_size_is_preserved_for_short_content(self):
         self.assertEqual(viewer_window_size(1920, 1080, 650), (1200, 800))
+
+
+class ExportFilenameTests(unittest.TestCase):
+    def test_preset_export_uses_only_hillshade_style_name(self):
+        path = Path(
+            "37.7751_-122.4194_0.25sqmi_preset_Combined_Detail.tif"
+        )
+        self.assertEqual(hillshade_style_name(path), "Combined Detail")
+        self.assertEqual(filename_style_component(path), "Combined_Detail")
+
+    def test_standard_style_names_are_clean(self):
+        self.assertEqual(
+            hillshade_style_name(Path("location_classic.tif")),
+            "Classic",
+        )
+        self.assertEqual(
+            filename_style_component(
+                Path("location_preset_Directional_Check_–_NW_Low_Sun.tif")
+            ),
+            "Directional_Check_NW_Low_Sun",
+        )
 
 
 class ViewerSidebarScrollingTests(unittest.TestCase):
