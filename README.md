@@ -23,6 +23,9 @@ This tool is designed for research and visualization. It is **not survey-grade G
 - **Export GeoTIFF** now writes a lossless Cloud Optimized GeoTIFF with 512 x
   512 tiles, DEFLATE compression, predictor 2, and internal average-resampled
   overviews while preserving the original grayscale pixels and georeferencing.
+- Working DEMs and hillshades are now isolated per running app session, so
+  closing another viewer or app instance cannot delete terrain files still in
+  use by an open Hillshade Viewer.
 
 ### Catalog additions carried forward from 6.3.5
 

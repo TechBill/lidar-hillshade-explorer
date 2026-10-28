@@ -8,7 +8,9 @@ Handles loading and saving user preferences to platform-appropriate directories.
 from __future__ import annotations
 
 import json
+import os
 import platform
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,12 @@ DATASET_RANKING_LABELS = {
     DATASET_RANKING_BEST_DETAIL: "Best Detail (Recommended)",
     DATASET_RANKING_NEWEST: "Newest Survey",
 }
+
+
+# Every running app process gets its own scratch directory. This prevents a
+# viewer or app instance that is closing from deleting the DEM still in use by
+# another open viewer.
+_SESSION_OUTPUT_NAME = f"session-{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
 
 def normalize_terrain_style(value: Any) -> str:
@@ -124,7 +132,7 @@ def get_output_dir() -> Path:
     """
     # A signed app installed in /Applications must not write inside its own
     # bundle. Keep generated files beside the user's configuration instead.
-    output_dir = get_config_dir() / "output"
+    output_dir = get_config_dir() / "output" / _SESSION_OUTPUT_NAME
 
     # Create output subdirectories
     (output_dir / "laz").mkdir(parents=True, exist_ok=True)

@@ -34,9 +34,10 @@ def cleanup_intermediate_files(laz_path: Optional[Path] = None, dem_path: Option
 
 def cleanup_output_folder():
     """
-    Delete entire output folder and all its contents.
+    Delete only this app process's session output and all its contents.
 
-    Called when the app closes to clean up all temporary files.
+    Called when the viewer or app closes. Other app instances use sibling
+    session directories and must remain untouched.
     """
     from utils.config import get_output_dir
 
@@ -44,6 +45,10 @@ def cleanup_output_folder():
     if output_dir.exists():
         try:
             shutil.rmtree(output_dir, ignore_errors=True)
-            print(f"Cleaned up output directory: {output_dir}")
+            print(f"Cleaned up session output directory: {output_dir}")
+            try:
+                output_dir.parent.rmdir()
+            except OSError:
+                pass
         except Exception as e:
             print(f"Warning: could not clean output directory: {e}")

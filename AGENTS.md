@@ -266,24 +266,19 @@ a bundle installed in `/Applications` isn't writable. Don't "fix" code that
 looks like it should write next to the executable — that would break signed
 installs.
 
-**`output/{laz,dem,hillshades}/` is a shared, unbounded scratch folder, not
-scoped per-session.** It's only cleared by `cleanup_output_folder()`
-(`src/utils/cleanup.py`), called from `_on_viewer_closed()` /
-`_on_close()` in `main_gui.py` — i.e. only when the viewer window is
-returned from normally or the app quits normally. Anything short of that
-(killing the process, a crash, generating a second location without closing
-the viewer first, or - as happened while verifying a fix - driving the
-frozen binary directly for a self-test and `kill`ing it) leaves the
-previous location's `.tif`/`.laz`/DEM files sitting there. Confirmed live:
-`output/hillshades/` ended up holding two locations' `_classic.tif` /
-`_preset_*.tif` at once this way. `hillshade_viewer.py`'s export dialogs
+Scratch data is scoped per running process under
+`output/session-<pid>-<random>/{laz,dem,hillshades,logs}`. This is intentional:
+closing one viewer or app must never delete the DEM still used by another app
+instance. `cleanup_output_folder()` removes only the current process's session
+directory. Do not change it back to deleting the shared `output/` parent.
+
+Anything short of normal cleanup (killing the process or a crash) can leave a
+stale session directory. `hillshade_viewer.py`'s export dialogs
 (`_show_kmz_export_dialog`, `_show_tif_export_dialog`) now filter
 `hillshades_dir.glob("*.tif")` down to `p.stem.startswith(f"{self.dem_path.stem}_")`
-for exactly this reason - don't remove that filter or re-introduce an
-unfiltered `glob("*.tif")` over that folder anywhere else without the same
-guard, or stale files from an earlier location reappear as confusing
-duplicate-looking entries (same display name, since the display-name logic
-strips the location prefix).
+for defensive isolation within a session. Don't remove that filter or
+re-introduce an unfiltered `glob("*.tif")` over that folder without the same
+guard.
 
 ## Testing without a full app run
 
