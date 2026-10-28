@@ -268,7 +268,11 @@ After selecting a style, click **Apply Style** to regenerate the hillshade. The 
 ## Exporting
 
 ### Export GeoTIFF
-Save the hillshade as a georeferenced GeoTIFF file. You can choose which hillshade style(s) to export. GeoTIFF files can be opened in GIS software like QGIS.
+Save the selected hillshade as a lossless Cloud Optimized GeoTIFF (COG). The
+export retains the original single-band grayscale pixels, CRS, resolution,
+extent, NoData, and metadata while adding 512 x 512 internal tiles, DEFLATE
+compression, and internal overviews for efficient display. COG files remain
+standards-compatible GeoTIFFs and can be opened in GIS software such as QGIS.
 
 ### Export KMZ
 Export one or more hillshade styles as a KMZ file for viewing in Google Earth. The export dialog lets you:

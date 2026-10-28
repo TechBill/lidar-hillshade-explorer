@@ -20,6 +20,9 @@ This tool is designed for research and visualization. It is **not survey-grade G
 - Added opt-in live-network integration checks separately from fast unit tests.
 - The Hillshade Viewer control sidebar now supports mouse-wheel scrolling when
   its controls overflow, while the wheel continues to zoom over the image.
+- **Export GeoTIFF** now writes a lossless Cloud Optimized GeoTIFF with 512 x
+  512 tiles, DEFLATE compression, predictor 2, and internal average-resampled
+  overviews while preserving the original grayscale pixels and georeferencing.
 
 ### Catalog additions carried forward from 6.3.5
 
@@ -324,7 +327,8 @@ reduced.
 
 ### Export
 
-- **Export GeoTIFF** — Save georeferenced hillshade for GIS software
+- **Export GeoTIFF** — Save a lossless Cloud Optimized GeoTIFF (COG) for GIS
+  software, with internal tiling and overviews for efficient viewing
 - **Export KMZ** — Save for Google Earth with optional description
 
 ---

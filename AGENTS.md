@@ -99,6 +99,22 @@ to overwrite DEM elevations, remove GeoTIFF NoData metadata, or synthesize
 underwater terrain. The source DEM and GeoTIFF must remain analytically
 unchanged.
 
+## Cloud Optimized GeoTIFF export
+
+The viewer's **Export GeoTIFF** action calls
+`src/lidar_core/geotiff_export.py::export_cog()`; it must not revert to a plain
+file copy. Export uses Rasterio's in-process GDAL `COG` driver, so no external
+or separately bundled `gdal_translate` executable is required. Creation
+options are DEFLATE, `PREDICTOR=YES`, 512-pixel blocks, AVERAGE overview
+resampling, and `BIGTIFF=IF_SAFER`.
+
+The export is written to a temporary sibling file, validated, and only then
+atomically replaces the chosen destination. Validation must continue checking
+`LAYOUT=COG`, 512 x 512 blocks, internal overviews, raster/georeferencing and
+band-property equality, source metadata and descriptions, and full-resolution
+GDAL band checksums. The current hillshade remains one 8-bit grayscale band;
+do not convert it to RGB. Keep the conversion off the Tk UI thread.
+
 ## Combined USGS/OpenTopography/NOAA/USIEI discovery and delivery
 
 `discover_datasets()` in `src/lidar_core/discovery.py` coordinates the

@@ -8,7 +8,6 @@ Based on geoimage-kmz viewer pattern.
 
 import math
 import threading
-import shutil
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
@@ -1118,6 +1117,38 @@ class HillshadeViewer:
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(pady=(0, 0))
 
+        export_status = ttk.Label(
+            main_frame,
+            text="Exports as a lossless Cloud Optimized GeoTIFF (COG)",
+            foreground="gray",
+        )
+        export_status.pack(pady=(8, 0))
+        export_in_progress = [False]
+
+        def finish_export(save_path: Path, error: Exception | None):
+            export_in_progress[0] = False
+            if error is not None:
+                export_btn.config(state=tk.NORMAL)
+                cancel_btn.config(state=tk.NORMAL)
+                export_status.config(
+                    text="Exports as a lossless Cloud Optimized GeoTIFF (COG)"
+                )
+                detail = str(error).strip() or repr(error)
+                messagebox.showerror(
+                    "Export Failed",
+                    f"Failed to export Cloud Optimized GeoTIFF:\n\n"
+                    f"{type(error).__name__}: {detail}",
+                    parent=dialog,
+                )
+                return
+
+            dialog.destroy()
+            messagebox.showinfo(
+                "Export Complete",
+                f"Cloud Optimized GeoTIFF (COG) saved to:\n{save_path}",
+                parent=self.window,
+            )
+
         def on_export():
             nonlocal selected_path
             selected_path = Path(selected_var.get())
@@ -1131,36 +1162,53 @@ class HillshadeViewer:
 
             save_path = filedialog.asksaveasfilename(
                 parent=dialog,
-                title="Save Hillshade TIF",
+                title="Save Cloud Optimized GeoTIFF",
                 defaultextension=".tif",
-                filetypes=[("GeoTIFF files", "*.tif"), ("All files", "*.*")],
+                filetypes=[
+                    ("Cloud Optimized GeoTIFF files", "*.tif"),
+                    ("All files", "*.*"),
+                ],
                 initialfile=selected_path.name
             )
             if not save_path:
                 return
 
-            try:
-                shutil.copy2(selected_path, save_path)
-            except Exception as e:
-                messagebox.showerror(
-                    "Export Failed",
-                    f"Failed to export TIF:\n\n{e}",
-                    parent=dialog
-                )
-                return
+            export_in_progress[0] = True
+            export_btn.config(state=tk.DISABLED)
+            cancel_btn.config(state=tk.DISABLED)
+            export_status.config(text="Creating and validating COG...")
 
-            dialog.destroy()
-            messagebox.showinfo(
-                "Export Complete",
-                f"Hillshade saved to:\n{save_path}",
-                parent=self.window
-            )
+            def export_worker():
+                error = None
+                try:
+                    from lidar_core.geotiff_export import export_cog
+
+                    export_cog(selected_path, Path(save_path))
+                except Exception as exc:
+                    import traceback
+
+                    traceback.print_exc()
+                    error = exc
+                dialog.after(
+                    0,
+                    lambda: finish_export(Path(save_path), error),
+                )
+
+            threading.Thread(target=export_worker, daemon=True).start()
 
         def on_close():
+            if export_in_progress[0]:
+                return
             dialog.destroy()
 
-        ttk.Button(btn_frame, text="Export", command=on_export, width=12).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=on_close, width=12).pack(side=tk.LEFT, padx=5)
+        export_btn = ttk.Button(
+            btn_frame, text="Export", command=on_export, width=12
+        )
+        export_btn.pack(side=tk.LEFT, padx=5)
+        cancel_btn = ttk.Button(
+            btn_frame, text="Cancel", command=on_close, width=12
+        )
+        cancel_btn.pack(side=tk.LEFT, padx=5)
 
         dialog.protocol("WM_DELETE_WINDOW", on_close)
         dialog.wait_window()
