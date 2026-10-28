@@ -52,7 +52,7 @@ def _ssl_context() -> ssl.SSLContext:
 def _fetch_json_url(url: str, timeout: int = 30) -> Dict[str, Any]:
     request = Request(
         url,
-        headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5.2"},
+        headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5.3"},
     )
     with urlopen(request, timeout=timeout, context=_ssl_context()) as response:
         payload = json.load(response)

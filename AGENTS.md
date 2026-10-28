@@ -100,6 +100,15 @@ a display-export operation only: never use this preference to overwrite DEM
 elevations, modify the working hillshade, or synthesize underwater terrain.
 The source DEM and working GeoTIFF must remain analytically unchanged.
 
+## DEM gap filling
+
+`src/lidar_core/dem_generator.py::_fill_dem_nodata()` deliberately fills only
+complete small connected NoData holes. Do not restore unrestricted
+`rasterio.fill.fillnodata()` writes: GDAL otherwise fills a narrow band around
+large building-sized voids, leaving a rounded/scalloped fringe that low-angle
+and combined hillshades strongly exaggerate. Large voids must remain entirely
+NoData so the shared neutral display fill renders them as one flat region.
+
 ## Cloud Optimized GeoTIFF export
 
 The viewer's **Export GeoTIFF** action calls

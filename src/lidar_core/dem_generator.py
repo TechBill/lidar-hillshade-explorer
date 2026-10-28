@@ -113,9 +113,11 @@ def _fill_dem_nodata(
     smoothing: int,
     log: LogFunc = None
 ) -> None:
-    """Fill small DEM NoData holes in-place using Rasterio/GDAL."""
+    """Fill complete small DEM holes without feathering into large voids."""
     try:
+        import numpy as np
         import rasterio
+        from rasterio.features import sieve
         from rasterio.fill import fillnodata
     except Exception as e:
         _log(log, f"Warning: Rasterio fill support not available ({e}); skipping DEM fill")
@@ -126,13 +128,41 @@ def _fill_dem_nodata(
         with rasterio.open(dem_path, "r+") as ds:
             data = ds.read(1)
             valid_mask = ds.read_masks(1)
+            invalid = valid_mask == 0
+            if not np.any(invalid):
+                return
+
+            original = data.copy()
             filled = fillnodata(
                 data,
                 mask=valid_mask,
                 max_search_distance=max_search_dist,
                 smoothing_iterations=smoothing,
             )
-            ds.write(filled, 1)
+
+            # GDALFillNodata normally paints a band around every void up to
+            # max_search_distance. Around large building footprints that
+            # leaves a rounded/scalloped fringe while the center stays NoData.
+            # Restrict writes to complete small connected holes instead. The
+            # area limit represents roughly a circle with the configured
+            # search distance as its radius.
+            max_hole_pixels = max(2, int(math.pi * max_search_dist**2))
+            sieved_mask = sieve(
+                valid_mask,
+                size=max_hole_pixels,
+                connectivity=8,
+            )
+            small_holes = invalid & (sieved_mask != 0)
+
+            result = original
+            result[small_holes] = filled[small_holes]
+            ds.write(result, 1)
+            _log(
+                log,
+                "Filled complete small NoData holes only "
+                f"(maximum area {max_hole_pixels - 1:,} pixels); "
+                "preserved large gaps without edge feathering.",
+            )
     except Exception as e:
         _log(log, f"Warning: DEM fill failed ({e}); leaving original NoData cells")
 

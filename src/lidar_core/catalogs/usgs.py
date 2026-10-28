@@ -338,7 +338,7 @@ def _query_tnm_products(
         )
         request = Request(
             f"{TNM_PRODUCTS_URL}?{query}",
-            headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5.2"},
+            headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5.3"},
         )
         if HAS_CERTIFI:
             ssl_context = ssl.create_default_context(cafile=certifi.where())

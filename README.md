@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 6.5.2
+# LiDAR Hillshade Explorer 6.5.3
 
 LiDAR Hillshade Explorer is a lightweight desktop app for exploring terrain using LiDAR elevation data.  
 Enter coordinates, click one button, and the app downloads available LiDAR, processes it, generates a hillshade image, and opens an interactive viewer.
@@ -7,7 +7,7 @@ This tool is designed for research and visualization. It is **not survey-grade G
 
 ---
 
-## What's New in 6.5.2
+## What's New in 6.5.3
 
 - Manual catalog discovery now runs outside the Tk interface thread, keeping
   the app responsive while providers are searched.
@@ -25,6 +25,8 @@ This tool is designed for research and visualization. It is **not survey-grade G
   overviews while preserving the original grayscale pixels and georeferencing.
 - When opaque NoData display is enabled, GeoTIFF export now uses the same flat
   neutral fill shown in the viewer and KMZ while preserving every valid pixel.
+- DEM gap filling now fills complete small holes only. Large building-sized
+  voids remain wholly NoData instead of receiving wavy, partially filled edges.
 - Working DEMs and hillshades are now isolated per running app session, so
   closing another viewer or app instance cannot delete terrain files still in
   use by an open Hillshade Viewer.
@@ -218,7 +220,7 @@ Because this app is distributed as a downloadable app (not from the official App
 
 ### macOS (Apple Silicon)
 
-The current 6.5.2 macOS release is built for Apple Silicon and runs natively on
+The current 6.5.3 macOS release is built for Apple Silicon and runs natively on
 M1, M2, M3, M4, and newer ARM64 Macs. It does not require Rosetta. An Intel Mac
 requires a separately built x86_64 release.
 
@@ -241,9 +243,9 @@ Only override this protection for a copy obtained from the project release you
 trust. The warning is expected for this unnotarized build, but a warning by
 itself is not proof that an arbitrary download is safe.
 
-### Install the macOS 6.5.2 Release
+### Install the macOS 6.5.3 Release
 
-1. Extract `LiDAR-Hillshade-6.5.2-Mac-ARM64.zip`.
+1. Extract `LiDAR-Hillshade-6.5.3-Mac-ARM64.zip`.
 2. Drag **LiDAR Hillshade Explorer.app** into **Applications**.
 3. Open the app. If macOS blocks the first launch, follow the steps above.
 
@@ -522,7 +524,7 @@ Create a ZIP:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-6.5.2-Mac-ARM64.zip"
+  "LiDAR-Hillshade-6.5.3-Mac-ARM64.zip"
 ```
 
 Or create a DMG:
@@ -536,7 +538,7 @@ create-dmg \
   --window-size 600 400 \
   --icon-size 100 \
   --app-drop-link 450 185 \
-  "LiDAR-Hillshade-Explorer-6.5.2-macOS-arm64.dmg" \
+  "LiDAR-Hillshade-Explorer-6.5.3-macOS-arm64.dmg" \
   "dist/LiDAR Hillshade Explorer.app"
 ```
 
