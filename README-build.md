@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 6.5.3
+# LiDAR Hillshade Explorer 6.5.4
 
 A simplified desktop LiDAR hillshade application for non-technical users.
 
@@ -28,7 +28,7 @@ User enters coordinates, clicks one button, and the app automatically finds LiDA
   - Classic hillshade
   - 6 terrain presets
   - Custom parameters (z-factor, altitude, azimuth, multidirectional, combined)
-- **KMZ Export**: Export to Google Earth format
+- **KMZ Export**: Export one style as flat image tiles for Google Earth Web
 
 ## Installation
 
@@ -38,7 +38,7 @@ Development mode requires system-level tools (install via QGIS/Homebrew/etc.):
 - PDAL (LiDAR processing + DEM generation)
 - GDAL (hillshade generation and KMZ export)
 
-The standalone 6.5.3 release bundles these tools and does not require users to
+The standalone 6.5.4 release bundles these tools and does not require users to
 install Python, PDAL, GDAL, PROJ, Homebrew, or QGIS.
 
 ### Python Dependencies

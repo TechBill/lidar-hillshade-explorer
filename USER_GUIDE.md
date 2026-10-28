@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer – User Guide (v6.5.3)
+# LiDAR Hillshade Explorer – User Guide (v6.5.4)
 
 ## Overview
 **LiDAR Hillshade Explorer** is a lightweight desktop app for exploring terrain using LiDAR data.  
@@ -16,7 +16,7 @@ Because LiDAR Hillshade Explorer is distributed as a downloadable app (not from 
 
 ### macOS (Apple Silicon)
 
-Version 6.5.3 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
+Version 6.5.4 for macOS is an ARM64 build for Apple Silicon MacBook Air, MacBook
 Pro, iMac, Mac mini, Mac Studio, and Mac Pro systems. It runs natively on M1,
 M2, M3, M4, and newer Apple Silicon chips. Intel Macs require a separately
 built x86_64 version.
@@ -278,8 +278,11 @@ pixels remain unchanged. COG files remain standards-compatible GeoTIFFs and
 can be opened in GIS software such as QGIS.
 
 ### Export KMZ
-Export one or more hillshade styles as a KMZ file for viewing in Google Earth. The export dialog lets you:
-- Select which hillshade files to include
+Export one hillshade style as a tiled KMZ for Google Earth Web. The KMZ uses a
+single `doc.kml` containing ordinary GroundOverlay tiles no larger than 2,048 x
+2,048 pixels. It contains no NetworkLinks, nested KML, or Region hierarchy and
+is limited to 20 tiles for web compatibility. The export dialog lets you:
+- Select one hillshade style
 - Add an optional description
 - Choose where to save the KMZ
 
@@ -406,7 +409,7 @@ Enable **Smart Selection** to automatically try the next-ranked WESM work unit.
 
 ## macOS Standalone Release
 
-The version 6.5.3 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
+The version 6.5.4 `.app` includes PDAL, GDAL, PROJ, and their required libraries.
 Users do not need Homebrew, Python, QGIS, PDAL, or GDAL. Internet access is still
 required to locate and download USGS, OpenTopography, NOAA, and USIEI terrain
 data and periodically refresh USGS metadata.

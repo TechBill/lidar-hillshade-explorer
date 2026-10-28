@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import tempfile
 import zipfile
+from math import ceil
 from pathlib import Path
 from typing import Optional
+from xml.sax.saxutils import escape
 
 
 LogFunc = Optional[callable]
+KMZ_TILE_SIZE = 2048
+KMZ_MAX_TILES = 20
 
 
 def _log(log: LogFunc, msg: str) -> None:
@@ -74,33 +78,105 @@ def render_hillshade_image(data, opaque_nodata: bool = False):
     return _hillshade_image(gray, valid, opaque_nodata)
 
 
-def _tif_to_png_and_bounds(
+def _tile_grid_dimensions(width: int, height: int) -> tuple[int, int, int]:
+    """Return columns, rows, and tile count for a web-compatible KMZ."""
+    columns = ceil(width / KMZ_TILE_SIZE)
+    rows = ceil(height / KMZ_TILE_SIZE)
+    return columns, rows, columns * rows
+
+
+def _clean_style_name(tif_path: Path) -> str:
+    """Return the user-facing hillshade style name from an output filename."""
+    tif_name = Path(tif_path).stem
+    if "_classic" in tif_name:
+        return "Classic"
+    if "_preset_" in tif_name:
+        return tif_name.split("_preset_")[-1].replace("_", " ")
+    if "_arch_" in tif_name:
+        return tif_name.split("_arch_")[-1].replace("_", " ")
+    if "_custom" in tif_name:
+        return "Custom"
+    return tif_name
+
+
+def _create_tiled_overlays(
     tif_path: Path,
-    png_path: Path,
-    opaque_nodata: bool = False,
-) -> dict:
-    """Render a GeoTIFF to PNG and return its WGS84 overlay bounds."""
+    temp_path: Path,
+    *,
+    opaque_nodata: bool,
+    progress_callback: callable = None,
+) -> tuple[list[dict], list[Path]]:
+    """Render one hillshade as flat 2048-pixel GroundOverlay tiles."""
     import rasterio
+    from rasterio.windows import Window
     from rasterio.warp import transform_bounds
 
-    with rasterio.open(tif_path) as src:
-        data = src.read(1, masked=True)
-        if src.crs is None:
+    tif_path = Path(tif_path)
+    with rasterio.open(tif_path) as source:
+        if source.crs is None:
             raise RuntimeError(f"GeoTIFF has no coordinate system: {tif_path}")
 
-        west, south, east, north = transform_bounds(
-            src.crs, "EPSG:4326", *src.bounds, densify_pts=21
+        columns, rows, tile_count = _tile_grid_dimensions(
+            source.width, source.height
         )
+        if tile_count > KMZ_MAX_TILES:
+            raise RuntimeError(
+                "Google Earth Web KMZ export would require "
+                f"{tile_count} image tiles, exceeding the {KMZ_MAX_TILES}-overlay "
+                "compatibility limit. Export a smaller area or a lower-resolution "
+                "hillshade."
+            )
 
-        image = render_hillshade_image(data, opaque_nodata=opaque_nodata)
-        image.save(png_path, format="PNG")
+        # Render once so normalization and the opaque NoData shade remain
+        # identical across every tile and no seams are introduced.
+        image = render_hillshade_image(
+            source.read(1, masked=True),
+            opaque_nodata=opaque_nodata,
+        )
+        overlays: list[dict] = []
+        png_files: list[Path] = []
+        style_name = _clean_style_name(tif_path)
+        if progress_callback:
+            progress_callback(0, tile_count)
 
-    return {
-        "north": north,
-        "south": south,
-        "east": east,
-        "west": west,
-    }
+        completed = 0
+        for row in range(rows):
+            top = row * KMZ_TILE_SIZE
+            tile_height = min(KMZ_TILE_SIZE, source.height - top)
+            for column in range(columns):
+                left = column * KMZ_TILE_SIZE
+                tile_width = min(KMZ_TILE_SIZE, source.width - left)
+                window = Window(left, top, tile_width, tile_height)
+                west, south, east, north = transform_bounds(
+                    source.crs,
+                    "EPSG:4326",
+                    *source.window_bounds(window),
+                    densify_pts=21,
+                )
+
+                relative_name = f"files/tile_{row:03d}_{column:03d}.png"
+                png_path = temp_path / relative_name
+                png_path.parent.mkdir(parents=True, exist_ok=True)
+                image.crop(
+                    (left, top, left + tile_width, top + tile_height)
+                ).save(png_path, format="PNG")
+
+                overlays.append(
+                    {
+                        "name": f"{style_name} tile {completed + 1}",
+                        "png_file": relative_name,
+                        "north": north,
+                        "south": south,
+                        "east": east,
+                        "west": west,
+                    }
+                )
+                png_files.append(png_path)
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, tile_count)
+
+    return overlays, png_files
 
 
 def tif_to_kmz(
@@ -109,87 +185,62 @@ def tif_to_kmz(
     description: str = "",
     log: LogFunc = None,
     opaque_nodata: bool = False,
+    document_name: str | None = None,
+    progress_callback: callable = None,
 ) -> Path:
-    """
-    Convert GeoTIFF to KMZ format for Google Earth.
-
-    Args:
-        tif_path: Path to input GeoTIFF file
-        output_path: Full path where KMZ file will be saved (including filename)
-        description: Custom description for the KML document (optional)
-        log: Optional logging function
-
-    Returns:
-        Path to generated KMZ file
-
-    Raises:
-        RuntimeError if GDAL not available or conversion fails
-    """
+    """Export one hillshade as a flat, tiled Google Earth Web KMZ."""
     tif_path = Path(tif_path)
     kmz_path = Path(output_path)
-
-    # Ensure parent directory exists
+    if not tif_path.is_file():
+        raise FileNotFoundError(f"Hillshade GeoTIFF does not exist: {tif_path}")
     kmz_path.parent.mkdir(parents=True, exist_ok=True)
+    _log(log, f"Creating Google Earth Web KMZ from {tif_path.name}...")
 
-    _log(log, f"Converting {tif_path.name} to KMZ...")
-
-    # Create temporary directory for intermediate files
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-
-        # Step 1: Convert GeoTIFF to PNG with GDAL
-        png_path = temp_path / (tif_path.stem + ".png")
-        _log(log, f"Creating PNG...")
-
-        bounds = _tif_to_png_and_bounds(
-            tif_path, png_path, opaque_nodata=opaque_nodata
+        overlays, png_files = _create_tiled_overlays(
+            tif_path,
+            temp_path,
+            opaque_nodata=opaque_nodata,
+            progress_callback=progress_callback,
         )
-        _log(
-            log,
-            f"WGS84 extent: {bounds['south']:.6f},{bounds['west']:.6f} "
-            f"to {bounds['north']:.6f},{bounds['east']:.6f}",
-        )
-
-        # Step 2: Create KML file
+        style_name = _clean_style_name(tif_path)
         kml_path = temp_path / "doc.kml"
-        _log(log, f"Creating KML...")
-
-        # Build KML with optional description
+        kml_name = escape(document_name or style_name)
         kml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>{tif_path.stem}</name>
+    <name>{kml_name}</name>
 """
-
-        # Only add description if provided
         if description:
-            kml_content += f"""    <description>{description}</description>
+            kml_content += f"""    <description>{escape(description)}</description>
 """
-
-        kml_content += f"""    <GroundOverlay>
-      <name>{tif_path.stem}</name>
+        kml_content += f"""    <Folder>
+      <name>{escape(style_name)}</name>
+"""
+        for overlay in overlays:
+            kml_content += f"""      <GroundOverlay>
+      <name>{escape(overlay['name'])}</name>
       <Icon>
-        <href>{png_path.name}</href>
+        <href>{overlay['png_file']}</href>
       </Icon>
       <LatLonBox>
-        <north>{bounds['north']}</north>
-        <south>{bounds['south']}</south>
-        <east>{bounds['east']}</east>
-        <west>{bounds['west']}</west>
+        <north>{overlay['north']}</north>
+        <south>{overlay['south']}</south>
+        <east>{overlay['east']}</east>
+        <west>{overlay['west']}</west>
       </LatLonBox>
     </GroundOverlay>
+"""
+        kml_content += """    </Folder>
   </Document>
 </kml>"""
+        kml_path.write_text(kml_content, encoding="utf-8")
 
-        with open(kml_path, 'w', encoding='utf-8') as f:
-            f.write(kml_content)
-
-        # Step 3: Create KMZ (ZIP with KML + PNG)
-        _log(log, f"Creating KMZ...")
-
-        with zipfile.ZipFile(kmz_path, 'w', zipfile.ZIP_DEFLATED) as kmz:
-            kmz.write(kml_path, 'doc.kml')
-            kmz.write(png_path, png_path.name)
+        with zipfile.ZipFile(kmz_path, "w", zipfile.ZIP_DEFLATED) as kmz:
+            kmz.write(kml_path, "doc.kml")
+            for png_path in png_files:
+                kmz.write(png_path, png_path.relative_to(temp_path).as_posix())
 
     _log(log, f"KMZ created: {kmz_path.name}")
     return kmz_path
@@ -204,152 +255,17 @@ def tifs_to_kmz(
     progress_callback: callable = None,
     opaque_nodata: bool = False,
 ) -> Path:
-    """
-    Convert multiple GeoTIFF files to a single KMZ with multiple layers.
-
-    Args:
-        tif_paths: List of paths to input GeoTIFF files
-        output_path: Full path where KMZ file will be saved (including filename)
-        description: Custom description for the KML document (optional)
-        document_name: Name for the KML document (optional, defaults to "Hillshade Collection")
-        log: Optional logging function
-        progress_callback: Optional callback(current, total) for progress updates
-
-    Returns:
-        Path to generated KMZ file
-
-    Raises:
-        RuntimeError if GDAL not available or conversion fails
-    """
-    if not tif_paths:
-        raise ValueError("No TIF files provided")
-
-    kmz_path = Path(output_path)
-    kmz_path.parent.mkdir(parents=True, exist_ok=True)
-
-    _log(log, f"Converting {len(tif_paths)} TIF files to single KMZ...")
-
-    # Create temporary directory for intermediate files
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
-
-        # List to store ground overlays info
-        overlays = []
-        png_files = []
-        failures: list[tuple[str, str]] = []
-
-        # Process each TIF file
-        total_files = len(tif_paths)
-        for idx, tif_path in enumerate(tif_paths):
-            if progress_callback:
-                progress_callback(idx, total_files)
-
-            tif_path = Path(tif_path)
-            _log(log, f"Processing {tif_path.name} ({idx + 1}/{total_files})...")
-
-            # Step 1: Convert GeoTIFF to PNG
-            # Extract a clean style name from the TIF filename.
-            tif_name = tif_path.stem
-
-            # Extract just the hillshade type part
-            if '_classic' in tif_name:
-                clean_name = "Classic"
-            elif '_preset_' in tif_name:
-                clean_name = tif_name.split('_preset_')[-1].replace('_', ' ')
-            elif '_arch_' in tif_name:
-                # Continue to export output created by older app versions.
-                clean_name = tif_name.split('_arch_')[-1].replace('_', ' ')
-            elif '_custom' in tif_name:
-                clean_name = "Custom"
-            else:
-                # Fallback to using the stem
-                clean_name = tif_name
-
-            png_path = temp_path / f"{clean_name}.png"
-
-            try:
-                bounds = _tif_to_png_and_bounds(
-                    tif_path, png_path, opaque_nodata=opaque_nodata
-                )
-            except Exception as exc:
-                reason = str(exc).strip() or repr(exc)
-                # Always print, not just when a log callback is wired up -
-                # the caller here (KMZ export) doesn't currently pass one,
-                # so this is the only trace of *why* a file failed.
-                message = f"Warning: Failed to open {tif_path.name} ({type(exc).__name__}: {reason}), skipping..."
-                print(message)
-                _log(log, message)
-                failures.append((tif_path.name, f"{type(exc).__name__}: {reason}"))
-                continue
-
-            # Store overlay info
-            overlays.append({
-                'name': clean_name,
-                'png_file': png_path.name,
-                **bounds,
-            })
-            png_files.append(png_path)
-
-        if not overlays:
-            detail = "; ".join(f"{name}: {reason}" for name, reason in failures[:5])
-            if len(failures) > 5:
-                detail += f"; ... and {len(failures) - 5} more"
-            raise RuntimeError(
-                f"No valid TIF files could be processed. {detail}" if detail
-                else "No valid TIF files could be processed"
-            )
-
-        # Step 2: Create KML with multiple GroundOverlays
-        kml_path = temp_path / "doc.kml"
-        _log(log, f"Creating KML with {len(overlays)} layers...")
-
-        # Use custom description only if provided (don't auto-generate)
-        kml_description = description if description else ""
-
-        # Build KML with multiple overlays
-        kml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>{document_name}</name>
-"""
-
-        # Only add description if provided
-        if kml_description:
-            kml_content += f"""    <description>{kml_description}</description>
-"""
-
-        # Add each overlay as a separate GroundOverlay
-        for overlay in overlays:
-            kml_content += f"""    <GroundOverlay>
-      <name>{overlay['name']}</name>
-      <Icon>
-        <href>{overlay['png_file']}</href>
-      </Icon>
-      <LatLonBox>
-        <north>{overlay['north']}</north>
-        <south>{overlay['south']}</south>
-        <east>{overlay['east']}</east>
-        <west>{overlay['west']}</west>
-      </LatLonBox>
-    </GroundOverlay>
-"""
-
-        kml_content += """  </Document>
-</kml>"""
-
-        with open(kml_path, 'w', encoding='utf-8') as f:
-            f.write(kml_content)
-
-        # Step 3: Create KMZ (ZIP with KML + all PNGs)
-        _log(log, f"Creating KMZ...")
-
-        with zipfile.ZipFile(kmz_path, 'w', zipfile.ZIP_DEFLATED) as kmz:
-            kmz.write(kml_path, 'doc.kml')
-            for png_path in png_files:
-                kmz.write(png_path, png_path.name)
-
-        if progress_callback:
-            progress_callback(total_files, total_files)
-
-    _log(log, f"KMZ created with {len(overlays)} layers: {kmz_path.name}")
-    return kmz_path
+    """Compatibility wrapper for the former multi-layer export API."""
+    if len(tif_paths) != 1:
+        raise ValueError(
+            "Google Earth Web KMZ export requires exactly one hillshade style"
+        )
+    return tif_to_kmz(
+        tif_paths[0],
+        output_path,
+        description=description,
+        document_name=document_name,
+        log=log,
+        progress_callback=progress_callback,
+        opaque_nodata=opaque_nodata,
+    )

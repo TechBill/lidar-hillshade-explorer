@@ -100,6 +100,19 @@ a display-export operation only: never use this preference to overwrite DEM
 elevations, modify the working hillshade, or synthesize underwater terrain.
 The source DEM and working GeoTIFF must remain analytically unchanged.
 
+## Google Earth Web KMZ export
+
+KMZ export targets Google Earth Web, not a desktop-only super-overlay. Export
+exactly one selected hillshade through
+`src/lidar_core/kmz_export.py::tif_to_kmz()`. The archive must contain one
+`doc.kml` with ordinary `GroundOverlay` entries and PNG tiles no larger than
+2,048 x 2,048 pixels. Do not add `NetworkLink`, nested KML, `Region`, or an LOD
+pyramid: those structures have failed in the web importer. Keep the archive at
+20 tiles or fewer and fail with an actionable message if the raster exceeds
+that compatibility limit. Every edge tile must use its own exact transformed
+WGS84 bounds. Render the whole source consistently before cropping so neutral
+NoData tone and grayscale normalization cannot vary at tile seams.
+
 ## DEM gap filling
 
 `src/lidar_core/dem_generator.py::_fill_dem_nodata()` deliberately fills only

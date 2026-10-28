@@ -769,12 +769,12 @@ class HillshadeViewer:
                 parent=self.window
             )
 
-    def _show_kmz_export_dialog(self) -> tuple[list[Path], str] | None:
+    def _show_kmz_export_dialog(self) -> tuple[Path, str] | None:
         """
         Show dialog for selecting TIF files and entering description for KMZ export.
 
         Returns:
-            Tuple of (list of selected TIF paths, description) or None if cancelled
+            Tuple of (selected TIF path, description) or None if cancelled
         """
         from utils.config import get_output_dir
 
@@ -828,7 +828,7 @@ class HillshadeViewer:
         dialog.geometry(f"+{x}+{y}")
 
         # Result variables
-        selected_files = None
+        selected_file = None
         description_text = None
 
         # Main frame with padding
@@ -838,7 +838,7 @@ class HillshadeViewer:
         # Title label
         ttk.Label(
             main_frame,
-            text="Select hillshade files to export:",
+            text="Select one hillshade style to export:",
             font=("", 11, "bold")
         ).pack(anchor=tk.W, pady=(0, 10))
 
@@ -870,11 +870,14 @@ class HillshadeViewer:
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Create checkbox for each TIF file
-        checkbox_vars = []
-        for idx, tif_file in enumerate(tif_files):
-            var = tk.BooleanVar(value=(tif_file == self.current_hillshade))
-            checkbox_vars.append((var, tif_file))
+        current_str = str(self.current_hillshade)
+        if not any(str(path) == current_str for path in tif_files):
+            current_str = str(tif_files[0])
+        selected_var = tk.StringVar(value=current_str)
+
+        # Google Earth Web's flat tiled KMZ contains one style so its image
+        # overlays remain within the web import compatibility limit.
+        for tif_file in tif_files:
 
             # Extract clean display name from TIF filename
             tif_name = tif_file.stem
@@ -893,30 +896,27 @@ class HillshadeViewer:
                 # Fallback to original name
                 display_name = tif_file.name
 
-            cb = tk.Checkbutton(
+            rb = tk.Radiobutton(
                 scrollable_frame,
                 text=display_name,
-                variable=var,
+                variable=selected_var,
+                value=str(tif_file),
                 bg='white',
                 activebackground='white',
                 highlightthickness=0
             )
-            cb.pack(anchor=tk.W, padx=5, pady=2)
+            rb.pack(anchor=tk.W, padx=5, pady=2)
 
-        # Select/Deselect All buttons
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=(0, 15))
-
-        def select_all():
-            for var, _ in checkbox_vars:
-                var.set(True)
-
-        def deselect_all():
-            for var, _ in checkbox_vars:
-                var.set(False)
-
-        ttk.Button(button_frame, text="Select All", command=select_all, width=12).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="Deselect All", command=deselect_all, width=12).pack(side=tk.LEFT)
+        ttk.Label(
+            main_frame,
+            text=(
+                "Creates a Google Earth Web compatible KMZ using ordinary "
+                "image tiles without NetworkLinks."
+            ),
+            foreground="gray",
+            wraplength=620,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(0, 15))
 
         # Description section
         desc_frame = ttk.LabelFrame(main_frame, text="Description (optional)", padding=10)
@@ -956,18 +956,17 @@ class HillshadeViewer:
         btn_frame.pack(pady=(0, 0))
 
         def on_ok():
-            nonlocal selected_files, description_text
+            nonlocal selected_file, description_text
 
-            # Get selected files from checkboxes
-            selected_files = [tif_file for var, tif_file in checkbox_vars if var.get()]
-
-            if not selected_files:
+            selected_value = selected_var.get()
+            if not selected_value:
                 messagebox.showwarning(
                     "No Selection",
-                    "Please select at least one file to export.",
+                    "Please select a hillshade style to export.",
                     parent=dialog
                 )
                 return
+            selected_file = Path(selected_value)
 
             # Get description (empty if placeholder still showing)
             desc = desc_text.get("1.0", "end-1c").strip()
@@ -979,8 +978,8 @@ class HillshadeViewer:
             dialog.destroy()
 
         def on_cancel():
-            nonlocal selected_files, description_text
-            selected_files = None
+            nonlocal selected_file, description_text
+            selected_file = None
             description_text = None
             dialog.destroy()
 
@@ -993,8 +992,8 @@ class HillshadeViewer:
         # Wait for dialog to close
         dialog.wait_window()
 
-        if selected_files is not None:
-            return (selected_files, description_text)
+        if selected_file is not None:
+            return (selected_file, description_text)
         return None
 
     def _show_tif_export_dialog(self) -> Path | None:
@@ -1232,7 +1231,7 @@ class HillshadeViewer:
         if not result:
             return
 
-        selected_files, description = result
+        selected_file, description = result
 
         # Generate default filename from coordinates and area
         # Format: lat_lon_sqmi.kmz
@@ -1303,21 +1302,21 @@ class HillshadeViewer:
         error_message = [None]  # Use list to allow modification in nested function
 
         def export_worker():
-            from lidar_core.kmz_export import tifs_to_kmz
+            from lidar_core.kmz_export import tif_to_kmz
             from utils.config import load_config
 
             def progress_callback(current, total):
                 # Update UI with progress
                 if total > 0:
                     pct = (current / total) * 100
-                    if current < len(selected_files):
-                        current_file = selected_files[current].name
-                    else:
-                        current_file = "Finalizing..."
-
                     progress_dialog.after(0, lambda: (
-                        status_label.config(text=f"Processing {current + 1} of {total}..."),
-                        file_label.config(text=current_file),
+                        status_label.config(
+                            text=(
+                                f"Creating tile {current} of {total}..."
+                                if current else "Preparing image tiles..."
+                            )
+                        ),
+                        file_label.config(text=selected_file.name),
                         progress_var.set(pct)
                     ))
 
@@ -1335,9 +1334,8 @@ class HillshadeViewer:
                         "opaque_kmz_nodata", False
                     )
                 )
-                # Export all files to a single KMZ.
-                tifs_to_kmz(
-                    selected_files,
+                tif_to_kmz(
+                    selected_file,
                     Path(save_path),
                     description=description,
                     document_name=document_name,
@@ -1348,7 +1346,7 @@ class HillshadeViewer:
                 # Update to 100%
                 progress_dialog.after(0, lambda: (
                     status_label.config(text="Export complete!"),
-                    file_label.config(text=f"{len(selected_files)} layer(s) exported"),
+                    file_label.config(text="Google Earth Web KMZ created"),
                     progress_var.set(100)
                 ))
 
@@ -1384,7 +1382,7 @@ class HillshadeViewer:
         else:
             messagebox.showinfo(
                 "Success",
-                f"KMZ file with {len(selected_files)} layer(s) saved to:\n{save_path}",
+                f"Google Earth Web KMZ saved to:\n{save_path}",
                 parent=self.window
             )
 
