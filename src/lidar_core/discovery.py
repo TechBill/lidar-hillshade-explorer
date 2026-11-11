@@ -16,6 +16,77 @@ LogFunc = Optional[Callable[[str], None]]
 DISCOVERY_TIMEOUT_SECONDS = 35
 
 
+def _numeric_resolution(props: Dict[str, Any]) -> Optional[float]:
+    """Best catalog estimate of native ground detail, in metres."""
+    for key in ("dem_gsd_meters", "point_spacing_meters"):
+        try:
+            value = float(props.get(key))
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return None
+
+
+def _ept_mosaic_candidate(
+    candidates: Dict[str, Dict[str, Any]],
+    bbox: Tuple[float, float, float, float],
+) -> Optional[Dict[str, Any]]:
+    """Combine adjacent finest-resolution EPT surveys that cover the AOI."""
+    point_clouds = []
+    seen_urls = set()
+    for candidate in candidates.values():
+        props = candidate.get("props") or {}
+        ept_url = props.get("ept_url")
+        geometry = props.get("coverage_geometry")
+        resolution = _numeric_resolution(props)
+        if (
+            props.get("source_type") not in {"ept", "noaa_ept", "usiei_ept"}
+            or not isinstance(ept_url, str)
+            or not ept_url
+            or ept_url in seen_urls
+            or not isinstance(geometry, dict)
+            or resolution is None
+        ):
+            continue
+        seen_urls.add(ept_url)
+        point_clouds.append((resolution, candidate))
+    if len(point_clouds) < 2:
+        return None
+
+    finest = min(resolution for resolution, _candidate in point_clouds)
+    fine = [
+        candidate
+        for resolution, candidate in point_clouds
+        if resolution <= finest * 1.35
+    ]
+    fine.sort(
+        key=lambda item: _dataset_sort_key(
+            item["id"], item["props"], ranking_mode="best_detail"
+        ),
+        reverse=True,
+    )
+    geometries = [item["props"]["coverage_geometry"] for item in fine]
+    if len(fine) < 2 or not usgs._geometries_cover_bbox(geometries, bbox):
+        return None
+
+    preferred = fine[0]
+    props = dict(preferred["props"])
+    component_ids = [str(item["id"]) for item in fine]
+    props.update(
+        {
+            "id": " + ".join(component_ids),
+            "workunit": " + ".join(component_ids),
+            "source_type": "ept_mosaic",
+            "covers_aoi": True,
+            "ept_urls": [item["props"]["ept_url"] for item in fine],
+            "mosaic_components": component_ids,
+            "catalog_provider": "USGS AWS EPT mosaic",
+        }
+    )
+    return {"id": props["id"], "props": props}
+
+
 @dataclass(frozen=True)
 class ProviderStatus:
     """Outcome of one catalog provider during a discovery pass."""
@@ -206,6 +277,7 @@ def discover_datasets(
                     "source_type": "ept",
                     "covers_aoi": bool(existing.get("covers_aoi"))
                     or bool(ept_props.get("covers_aoi")),
+                    "coverage_geometry": ept_props.get("coverage_geometry"),
                 }
             )
         else:
@@ -245,6 +317,14 @@ def discover_datasets(
             existing_identities.add(identity)
 
     candidates.update(outcomes.get("OpenTopography", {}))
+    mosaic = _ept_mosaic_candidate(candidates, bbox)
+    if mosaic is not None:
+        candidates["ept-mosaic:" + "|".join(mosaic["props"]["mosaic_components"])] = mosaic
+        usgs._log(
+            log,
+            "Added adjacent-survey EPT mosaic: "
+            + " + ".join(mosaic["props"]["mosaic_components"]),
+        )
     if ranking_mode is None:
         ranking_mode = str(
             load_config().get("preferences", {}).get("dataset_ranking", "best_detail")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import ssl
 import subprocess
 import tempfile
@@ -31,6 +32,91 @@ from lidar_core.catalogs.usgs import (
 
 MIN_LAZ_SIZE = 2000
 MIN_POINTS_PER_SQ_MI = 100000
+
+
+def _local_utm_epsg(latitude: float, longitude: float) -> int:
+    zone = max(1, min(60, int((longitude + 180) // 6) + 1))
+    return (32600 if latitude >= 0 else 32700) + zone
+
+
+def _build_ept_mosaic_pipeline(
+    ept_urls: List[str],
+    bbox4326: Tuple[float, float, float, float],
+    target_epsg: int,
+    output_path: Path,
+    projected_bounds: str,
+    buffer_m: float,
+) -> Dict[str, Any]:
+    """Read adjacent EPT surveys independently, then merge in local UTM."""
+    min_lon, min_lat, max_lon, max_lat = bbox4326
+    center_lat = (min_lat + max_lat) / 2
+    lat_pad = buffer_m / 111_320.0
+    lon_scale = max(0.01, abs(math.cos(math.radians(center_lat))))
+    lon_pad = buffer_m / (111_320.0 * lon_scale)
+    query_bounds = {
+        "minx": min_lon - lon_pad,
+        "miny": min_lat - lat_pad,
+        "minz": -12_000,
+        "maxx": max_lon + lon_pad,
+        "maxy": max_lat + lat_pad,
+        "maxz": 10_000,
+        "crs": "EPSG:4326",
+    }
+
+    pipeline: List[Dict[str, Any]] = []
+    projected_tags = []
+    for index, ept_url in enumerate(ept_urls):
+        reader = f"survey_{index}"
+        ground = f"ground_{index}"
+        projected = f"projected_{index}"
+        pipeline.extend(
+            [
+                {
+                    "type": "readers.ept",
+                    "filename": ept_url,
+                    "bounds": query_bounds,
+                    "requests": 4,
+                    "tag": reader,
+                },
+                {
+                    "type": "filters.range",
+                    "inputs": reader,
+                    "limits": "Classification[2:2]",
+                    "tag": ground,
+                },
+                {
+                    "type": "filters.reprojection",
+                    "inputs": ground,
+                    "out_srs": f"EPSG:{target_epsg}",
+                    "tag": projected,
+                },
+            ]
+        )
+        projected_tags.append(projected)
+
+    merged_input = projected_tags[0]
+    if len(projected_tags) > 1:
+        pipeline.append(
+            {"type": "filters.merge", "inputs": projected_tags, "tag": "merged"}
+        )
+        merged_input = "merged"
+    pipeline.extend(
+        [
+            {
+                "type": "filters.crop",
+                "inputs": merged_input,
+                "bounds": projected_bounds,
+                "tag": "cropped",
+            },
+            {
+                "type": "writers.las",
+                "inputs": "cropped",
+                "filename": str(output_path),
+                "compression": "laszip",
+            },
+        ]
+    )
+    return {"pipeline": pipeline}
 
 
 def find_pdal(config: dict = None) -> str:
@@ -169,7 +255,13 @@ def clip_aws_aoi_to_ground_laz(
         ds_props = dict(dataset.get("props") or {})
         ept_url = ds_props.get("ept_url")
         epsg_code = _get_ept_srs_epsg(ept_url) if ept_url else 0
-    if ds_props.get("source_type") not in {"ept", "noaa_ept", "usiei_ept"} or not ept_url:
+    if ds_props.get("source_type") == "ept_mosaic":
+        ept_urls = [str(url) for url in ds_props.get("ept_urls") or [] if url]
+        ept_url = ept_urls[0] if ept_urls else None
+        epsg_code = _local_utm_epsg(center_lat, center_lon)
+    else:
+        ept_urls = [ept_url] if ept_url else []
+    if ds_props.get("source_type") not in {"ept", "noaa_ept", "usiei_ept", "ept_mosaic"} or not ept_url:
         raise RuntimeError("Selected dataset is not available through supported EPT delivery")
 
     ds_id = ds_props.get("id") or "unknown"
@@ -235,24 +327,35 @@ def clip_aws_aoi_to_ground_laz(
     _log(log, f"Buffered bounds in {target_epsg}: {bounds_str}")
 
     # Build PDAL pipeline using bounds (not polygon)
-    pipeline_obj = {
-        "pipeline": [
-            {
-                "type": "readers.ept",
-                "filename": ept_url,
-                "bounds": bounds_str,
-            },
-            {
-                "type": "filters.range",
-                "limits": "Classification[2:2]",  # Ground points only
-            },
-            {
-                "type": "writers.las",
-                "filename": str(clipped_laz),
-                "compression": "laszip",
-            },
-        ]
-    }
+    if ds_props.get("source_type") == "ept_mosaic":
+        pipeline_obj = _build_ept_mosaic_pipeline(
+            ept_urls,
+            bbox4326,
+            epsg_code,
+            clipped_laz,
+            bounds_str,
+            tin_buffer_m,
+        )
+        _log(log, f"Mosaicking {len(ept_urls)} adjacent EPT surveys with PDAL")
+    else:
+        pipeline_obj = {
+            "pipeline": [
+                {
+                    "type": "readers.ept",
+                    "filename": ept_url,
+                    "bounds": bounds_str,
+                },
+                {
+                    "type": "filters.range",
+                    "limits": "Classification[2:2]",  # Ground points only
+                },
+                {
+                    "type": "writers.las",
+                    "filename": str(clipped_laz),
+                    "compression": "laszip",
+                },
+            ]
+        }
 
     pipeline_json = laz_dir / "pipeline.json"
     pipeline_json.write_text(json.dumps(pipeline_obj, indent=2), encoding="utf-8")
@@ -331,7 +434,7 @@ def _download_product_file(
         raise RuntimeError(f"Unexpected USGS product host: {host or 'missing'}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    request = Request(url, headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5.5"})
+    request = Request(url, headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5.6"})
     if HAS_CERTIFI:
         ssl_context = ssl.create_default_context(cafile=certifi.where())
     else:

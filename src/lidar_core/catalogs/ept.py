@@ -193,6 +193,7 @@ def _ept_candidates(
                 ),
                 "source_type": "ept",
                 "covers_aoi": _geometry_covers_bbox(geom, bbox4326),
+                "coverage_geometry": geom,
             }
         )
         candidates[key] = {"id": workunit, "props": enriched}

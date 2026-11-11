@@ -177,7 +177,10 @@ point-cloud paths continue to retain classification 2 before DEM generation.
 
 The official USIEI topographic-lidar ArcGIS layer is queried once per AOI.
 Its real GeoJSON footprint must cover the complete AOI before a record is
-admitted. `catalogs/noaa.py` accepts only complete, public `Lidar-Topo`
+admitted. Adjacent AWS EPT work units are the deliberate exception: discovery
+may synthesize one mosaic candidate when the finest-resolution footprints
+jointly cover the AOI, and PDAL ground-filters, reprojects, and merges those
+EPT sources before DEM generation. `catalogs/noaa.py` accepts only complete, public `Lidar-Topo`
 records with a public NOAA EPT URL and confirmed classification 2 ground
 points. Topobathy/bathymetry remain excluded from normal terrain mode.
 

@@ -1,4 +1,4 @@
-# LiDAR Hillshade Explorer 6.5.5
+# LiDAR Hillshade Explorer 6.5.6
 
 LiDAR Hillshade Explorer is a lightweight desktop app for exploring terrain using LiDAR elevation data.  
 Enter coordinates, click one button, and the app downloads available LiDAR, processes it, generates a hillshade image, and opens an interactive viewer.
@@ -7,7 +7,13 @@ This tool is designed for research and visualization. It is **not survey-grade G
 
 ---
 
-## What's New in 6.5.5
+## What's New in 6.5.6
+
+- Adjacent fine-resolution USGS EPT surveys are now recognized as one complete
+  catalog choice when their real footprints jointly cover the requested area.
+- PDAL reads, ground-filters, reprojects, and merges every survey in that
+  mosaic before DEM generation, preventing a partial 0.5 m survey or an older
+  complete coarse survey from silently winning at survey boundaries.
 
 - Manual catalog discovery now runs outside the Tk interface thread, keeping
   the app responsive while providers are searched.
@@ -225,7 +231,7 @@ Because this app is distributed as a downloadable app (not from the official App
 
 ### macOS (Apple Silicon)
 
-The current 6.5.5 macOS release is built for Apple Silicon and runs natively on
+The current 6.5.6 macOS release is built for Apple Silicon and runs natively on
 M1, M2, M3, M4, and newer ARM64 Macs. It does not require Rosetta. An Intel Mac
 requires a separately built x86_64 release.
 
@@ -248,9 +254,9 @@ Only override this protection for a copy obtained from the project release you
 trust. The warning is expected for this unnotarized build, but a warning by
 itself is not proof that an arbitrary download is safe.
 
-### Install the macOS 6.5.5 Release
+### Install the macOS 6.5.6 Release
 
-1. Extract `LiDAR-Hillshade-6.5.5-Mac-ARM64.zip`.
+1. Extract `LiDAR-Hillshade-6.5.6-Mac-ARM64.zip`.
 2. Drag **LiDAR Hillshade Explorer.app** into **Applications**.
 3. Open the app. If macOS blocks the first launch, follow the steps above.
 
@@ -529,7 +535,7 @@ Create a ZIP:
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
   "dist/LiDAR Hillshade Explorer.app" \
-  "LiDAR-Hillshade-6.5.5-Mac-ARM64.zip"
+  "LiDAR-Hillshade-6.5.6-Mac-ARM64.zip"
 ```
 
 Or create a DMG:
@@ -543,7 +549,7 @@ create-dmg \
   --window-size 600 400 \
   --icon-size 100 \
   --app-drop-link 450 185 \
-  "LiDAR-Hillshade-Explorer-6.5.5-macOS-arm64.dmg" \
+  "LiDAR-Hillshade-Explorer-6.5.6-macOS-arm64.dmg" \
   "dist/LiDAR Hillshade Explorer.app"
 ```
 

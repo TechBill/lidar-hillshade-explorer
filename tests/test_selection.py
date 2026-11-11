@@ -28,7 +28,13 @@ from lidar_core.catalogs.usiei import (  # noqa: E402
     _usiei_links,
 )
 from processing import ProcessingOrchestrator  # noqa: E402
-from lidar_core.discovery import DiscoverySnapshot, discover_datasets  # noqa: E402
+from lidar_core.discovery import (  # noqa: E402
+    DiscoverySnapshot,
+    _ept_mosaic_candidate,
+    discover_datasets,
+)
+from lidar_core.catalogs.usgs import _geometries_cover_bbox  # noqa: E402
+from lidar_core.delivery.point_cloud import _build_ept_mosaic_pipeline  # noqa: E402
 from utils.config import (  # noqa: E402
     TERRAIN_STYLE_CONTINUOUS,
     TERRAIN_STYLE_CUSTOM,
@@ -54,6 +60,18 @@ def polygon_feature(name, coordinates):
 
 
 class CoverageGeometryTests(unittest.TestCase):
+    def test_adjacent_footprints_jointly_cover_aoi(self):
+        west = {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [1, 0], [1, 2], [0, 2], [0, 0]]],
+        }
+        east = {
+            "type": "Polygon",
+            "coordinates": [[[1, 0], [2, 0], [2, 2], [1, 2], [1, 0]]],
+        }
+        self.assertTrue(_geometries_cover_bbox([west, east], (0, 0, 2, 2)))
+        self.assertFalse(_geometries_cover_bbox([west], (0, 0, 2, 2)))
+
     def test_rejects_gap_inside_dataset_envelope(self):
         # Two disjoint coverage islands have an envelope spanning the AOI, but
         # neither real polygon touches it.
@@ -127,6 +145,54 @@ class CoverageGeometryTests(unittest.TestCase):
 
 
 class SmartSelectionTests(unittest.TestCase):
+    def test_adjacent_fine_ept_surveys_become_complete_mosaic_candidate(self):
+        def candidate(name, left, right, resolution):
+            return {
+                "id": name,
+                "props": {
+                    "id": name,
+                    "source_type": "ept",
+                    "ept_url": f"https://example.test/{name}/ept.json",
+                    "dem_gsd_meters": resolution,
+                    "covers_aoi": False,
+                    "coverage_geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[
+                            [left, 0], [right, 0], [right, 2], [left, 2], [left, 0]
+                        ]],
+                    },
+                },
+            }
+
+        candidates = {
+            "west": candidate("Fine west", 0, 1, 0.5),
+            "east": candidate("Fine east", 1, 2, 0.5),
+            "old": candidate("Older complete", 0, 2, 1.0),
+        }
+        candidates["old"]["props"]["covers_aoi"] = True
+        mosaic = _ept_mosaic_candidate(candidates, (0, 0, 2, 2))
+
+        self.assertIsNotNone(mosaic)
+        self.assertEqual(mosaic["props"]["source_type"], "ept_mosaic")
+        self.assertEqual(mosaic["props"]["mosaic_components"], ["Fine west", "Fine east"])
+        self.assertEqual(len(mosaic["props"]["ept_urls"]), 2)
+
+    def test_ept_mosaic_pipeline_filters_and_reprojects_each_survey(self):
+        pipeline = _build_ept_mosaic_pipeline(
+            ["https://example.test/a/ept.json", "https://example.test/b/ept.json"],
+            (-94.65, 44.97, -94.63, 44.99),
+            32615,
+            Path("mosaic.laz"),
+            "([369000,371000],[4980000,4982000])",
+            20,
+        )["pipeline"]
+
+        self.assertEqual([stage["type"] for stage in pipeline].count("readers.ept"), 2)
+        self.assertEqual([stage["type"] for stage in pipeline].count("filters.range"), 2)
+        self.assertEqual([stage["type"] for stage in pipeline].count("filters.reprojection"), 2)
+        self.assertEqual([stage["type"] for stage in pipeline].count("filters.merge"), 1)
+        self.assertEqual(pipeline[-1]["type"], "writers.las")
+
     @patch("lidar_core.discovery.opentopography._opentopography_candidates")
     @patch("lidar_core.discovery._coastal_candidates", return_value=([], {}, {}))
     @patch("lidar_core.discovery.ept._ept_candidates", side_effect=RuntimeError("offline"))

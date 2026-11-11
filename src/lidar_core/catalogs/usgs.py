@@ -338,7 +338,7 @@ def _query_tnm_products(
         )
         request = Request(
             f"{TNM_PRODUCTS_URL}?{query}",
-            headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5.5"},
+            headers={"User-Agent": "LiDAR-Hillshade-Explorer/6.5.6"},
         )
         if HAS_CERTIFI:
             ssl_context = ssl.create_default_context(cafile=certifi.where())
@@ -488,6 +488,35 @@ def _geometry_covers_bbox(
             if not any(
                 polygon
                 and _point_in_ring((x, y), polygon[0])
+                and not any(_point_in_ring((x, y), hole) for hole in polygon[1:])
+                for polygon in polygons
+            ):
+                return False
+    return True
+
+
+def _geometries_cover_bbox(
+    geometries: List[Dict[str, Any]],
+    bbox: Tuple[float, float, float, float],
+) -> bool:
+    """Return whether adjacent real footprints jointly cover the AOI."""
+    polygons = []
+    for geom in geometries:
+        if geom.get("type") == "Polygon":
+            polygons.append(geom.get("coordinates"))
+        elif geom.get("type") == "MultiPolygon":
+            polygons.extend(geom.get("coordinates") or [])
+    polygons = [polygon for polygon in polygons if polygon]
+    if not polygons:
+        return False
+
+    minx, miny, maxx, maxy = bbox
+    for x_index in range(13):
+        x = minx + (maxx - minx) * x_index / 12
+        for y_index in range(13):
+            y = miny + (maxy - miny) * y_index / 12
+            if not any(
+                _point_in_ring((x, y), polygon[0])
                 and not any(_point_in_ring((x, y), hole) for hole in polygon[1:])
                 for polygon in polygons
             ):
